@@ -24,6 +24,24 @@ def list_members(db: Session = Depends(get_db)):
     return db.scalars(select(Member).order_by(Member.name.asc()).limit(500)).all()
 
 
+@router.get("/member-search", response_model=list[MemberRead])
+def search_members(query: str = Query(..., min_length=1), db: Session = Depends(get_db)):
+    keyword = query.strip()
+    statement = (
+        select(Member)
+        .where(
+            or_(
+                Member.member_no.contains(keyword),
+                Member.name.contains(keyword),
+                Member.department_name.contains(keyword),
+            )
+        )
+        .order_by(Member.name.asc(), Member.member_no.asc())
+        .limit(20)
+    )
+    return db.scalars(statement).all()
+
+
 @router.get("/member-lookup", response_model=MemberLookupResponse)
 def lookup_member(memberKey: str = Query(..., min_length=1), db: Session = Depends(get_db)):
     key = memberKey.strip()
@@ -50,5 +68,5 @@ def lookup_member(memberKey: str = Query(..., min_length=1), db: Session = Depen
     return MemberLookupResponse(
         found=False,
         lookup_key=key,
-        message="일치하는 헌금자 정보가 없습니다. 헌금 봉투 번호(또는 등록 번호)를 먼저 확인해 주세요.",
+        message="일치하는 헌금자 정보가 없습니다. 헌금 봉투 번호(또는 등록 번호)를 먼저 확인하거나 이름 일부로 검색해 주세요.",
     )

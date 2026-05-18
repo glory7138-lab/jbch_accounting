@@ -41,6 +41,11 @@ th, td { padding: 10px 8px; border-bottom: 1px solid var(--border); text-align: 
 .helper-card { padding: 14px; border: 1px solid #dbeafe; background: #f8fbff; border-radius: 12px; }
 .inline-row { display: flex; gap: 8px; }
 .inline-row input { flex: 1; }
+.search-result-list { display: grid; gap: 8px; margin-top: 10px; }
+.search-result-item { display: flex; justify-content: space-between; align-items: center; text-align: left; background: white; color: var(--text); border: 1px solid var(--border); }
+.account-pill-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.account-pill { background: white; color: var(--text); border: 1px solid var(--border); }
+.account-pill.active { background: #dbeafe; border-color: #93c5fd; color: #1d4ed8; }
 input, select, textarea, button { font: inherit; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border); }
 select[size] { min-height: 220px; }
 button { background: var(--primary); color: white; border: none; cursor: pointer; }
