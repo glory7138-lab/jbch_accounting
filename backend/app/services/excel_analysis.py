@@ -26,16 +26,16 @@ KEYWORDS = {
 }
 
 ACCOUNT_CODE_CANDIDATES = ["회계코드", "계정코드"]
-MEMBER_SHEET_CANDIDATES = ["성도 현황 번호", "성도현황", "번호"]
+MEMBER_SHEET_CANDIDATES = ["헌금봉투번호", "헌금 봉투 번호", "성도현황번호", "성도 현황 번호", "번호"]
 FUND_EXCLUDE_NAMES = {"sheet3", "계정코드", "작성상의 주의사항", "회계결산 표지", "sheet1"}
 
 
 def normalize(value: Any) -> str:
-    if value is None:
+    if value is None or pd.isna(value):
         return ""
     text = str(value).strip()
     text = re.sub(r"\s+", " ", text)
-    return text
+    return "" if text.lower() == "nan" else text
 
 
 def classify_header(header: str) -> list[str]:
@@ -149,7 +149,7 @@ def build_schema_brief(analysis: list[dict[str, Any]]) -> dict[str, Any]:
     inferred_domains = [
         {"table": "funds", "reason": "회계장부 파일에 통합계정, 일반계정, 부서/헌금별 시트가 반복됨"},
         {"table": "accounts", "reason": "계정코드 시트에 회계코드와 관리항목 계층이 존재함"},
-        {"table": "members", "reason": "현금현황 파일에 성도 현황 번호 시트가 있음"},
+        {"table": "members", "reason": "현금현황 파일에 헌금 봉투 번호 시트가 있어 봉투번호가 사실상 식별키 역할을 함"},
         {"table": "vouchers", "reason": "회계장부 시트들이 날짜, 적요, 입금/지출, 잔액 중심의 거래 원장을 가짐"},
         {"table": "voucher_lines", "reason": "수입/지출과 계정코드가 함께 존재해 다중 분개 확장이 필요함"},
         {"table": "accounting_periods", "reason": "월말결산 양식과 주간보고 자료가 월 단위 마감을 전제로 함"},
@@ -195,12 +195,14 @@ def seed_reference_data(db: Session, base_dir: str | Path) -> dict[str, int]:
     imported = 0
 
     for workbook_path in workbooks:
-        summary = analyze_workbook(workbook_path)
-        db.add(ImportBatch(source_name=workbook_path.name, summary_json=summary))
-        imported += 1
+        exists = db.scalar(select(ImportBatch).where(ImportBatch.source_name == workbook_path.name))
+        if not exists:
+            summary = analyze_workbook(workbook_path)
+            db.add(ImportBatch(source_name=workbook_path.name, summary_json=summary))
+            imported += 1
 
     ledger_workbook = next((path for path in workbooks if "회계장부" in path.name), None)
-    cash_workbook = next((path for path in workbooks if "현금현황" in path.name), None)
+    cash_workbook = next((path for path in workbooks if "현금현황" in path.name or "헌금현황" in path.name), None)
 
     funds_created = 0
     if ledger_workbook:
@@ -209,14 +211,15 @@ def seed_reference_data(db: Session, base_dir: str | Path) -> dict[str, int]:
             normalized_name = sheet_name.strip().lower()
             if normalized_name in FUND_EXCLUDE_NAMES:
                 continue
-            exists = db.scalar(select(Fund).where(Fund.name == sheet_name))
-            if exists:
+            existing_fund = db.scalar(select(Fund).where(Fund.name == sheet_name))
+            if existing_fund:
                 continue
-            code = re.sub(r"[^0-9A-Za-z가-힣]+", "-", sheet_name).strip("-").lower() or f"fund-{funds_created+1}"
+            code = re.sub(r"[^0-9A-Za-z가-힣]+", "-", sheet_name).strip("-").lower() or f"fund-{funds_created + 1}"
             db.add(Fund(code=code, name=sheet_name))
             funds_created += 1
 
     accounts_created = 0
+    accounts_updated = 0
     if ledger_workbook:
         excel = pd.ExcelFile(ledger_workbook)
         account_sheet = _find_sheet_name(excel.sheet_names, ACCOUNT_CODE_CANDIDATES)
@@ -226,7 +229,9 @@ def seed_reference_data(db: Session, base_dir: str | Path) -> dict[str, int]:
             code_col = _match_column(columns, ["회계코드", "계정코드"])
             major_col = _match_column(columns, ["대분류관리항목", "대분류"])
             middle_col = _match_column(columns, ["중분류관리항목", "중분류"])
-            report_col = _match_column(columns, ["세부관리항목", "보고용", "관리항목"])
+            report_col = _match_column(columns, ["세부계정항목", "세부관리항목", "보고용", "예산안"])
+            type_col = _match_column(columns, ["계정유형"])
+            finance_col = _match_column(columns, ["재정구분"])
             debit_col = _match_column(columns, ["차변계정", "차변"])
             credit_col = _match_column(columns, ["대변계정", "대변"])
             name_col = middle_col or major_col or report_col
@@ -234,24 +239,36 @@ def seed_reference_data(db: Session, base_dir: str | Path) -> dict[str, int]:
                 code = normalize(row.get(code_col)) if code_col else ""
                 if not code or code.lower() == "nan":
                     continue
-                if db.scalar(select(Account).where(Account.code == code)):
-                    continue
                 name = normalize(row.get(name_col)) if name_col else code
-                debit_account = normalize(row.get(debit_col)) if debit_col else None
-                credit_account = normalize(row.get(credit_col)) if credit_col else None
-                normal_side = "debit" if debit_account and not credit_account else "credit" if credit_account and not debit_account else None
-                db.add(
-                    Account(
-                        code=code,
-                        name=name or code,
-                        major_category=normalize(row.get(major_col)) if major_col else None,
-                        middle_category=normalize(row.get(middle_col)) if middle_col else None,
-                        report_category=normalize(row.get(report_col)) if report_col else None,
-                        debit_account=debit_account,
-                        credit_account=credit_account,
-                        normal_side=normal_side,
-                    )
-                )
+                account_payload = {
+                    "name": name or code,
+                    "major_category": normalize(row.get(major_col)) if major_col else None,
+                    "middle_category": normalize(row.get(middle_col)) if middle_col else None,
+                    "report_category": normalize(row.get(report_col)) if report_col else None,
+                    "account_type": normalize(row.get(type_col)) if type_col else None,
+                    "finance_category": normalize(row.get(finance_col)) if finance_col else None,
+                    "debit_account": normalize(row.get(debit_col)) if debit_col else None,
+                    "credit_account": normalize(row.get(credit_col)) if credit_col else None,
+                }
+                normal_side = None
+                if account_payload["debit_account"] and not account_payload["credit_account"]:
+                    normal_side = "debit"
+                elif account_payload["credit_account"] and not account_payload["debit_account"]:
+                    normal_side = "credit"
+                account_payload["normal_side"] = normal_side
+
+                existing_account = db.scalar(select(Account).where(Account.code == code))
+                if existing_account:
+                    changed = False
+                    for field, value in account_payload.items():
+                        if getattr(existing_account, field) != value:
+                            setattr(existing_account, field, value)
+                            changed = True
+                    if changed:
+                        accounts_updated += 1
+                    continue
+
+                db.add(Account(code=code, **account_payload))
                 accounts_created += 1
 
     members_created = 0
@@ -272,12 +289,14 @@ def seed_reference_data(db: Session, base_dir: str | Path) -> dict[str, int]:
                     if not name or name.lower() == "nan":
                         continue
                     member_no = normalize(row.get(no_col)) if no_col else None
-                    exists = db.scalar(select(Member).where(Member.name == name, Member.member_no == member_no))
+                    if not member_no:
+                        continue
+                    exists = db.scalar(select(Member).where(Member.member_no == member_no))
                     if exists:
                         continue
                     db.add(
                         Member(
-                            member_no=member_no or None,
+                            member_no=member_no,
                             name=name,
                             department_name=normalize(row.get(dept_col)) if dept_col else None,
                             gender_or_section=normalize(row.get(gender_col)) if gender_col else None,
@@ -292,5 +311,6 @@ def seed_reference_data(db: Session, base_dir: str | Path) -> dict[str, int]:
         "import_batches": imported,
         "funds": funds_created,
         "accounts": accounts_created,
+        "accounts_updated": accounts_updated,
         "members": members_created,
     }

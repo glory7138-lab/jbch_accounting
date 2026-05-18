@@ -34,7 +34,7 @@ def build_voucher_rows(db: Session) -> list[dict]:
                 "거래일자": voucher.voucher_date.isoformat(),
                 "유형": "수입" if voucher.entry_type == "income" else "지출",
                 "계정과목": voucher.account.name if voucher.account else "",
-                "기금": voucher.fund.name if voucher.fund else "",
+                "기금": voucher.fund.name if voucher.fund else (voucher.fund_name or ""),
                 "적요": voucher.description,
                 "금액": float(voucher.amount),
                 "거래처": voucher.counterparty or "",

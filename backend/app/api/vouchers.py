@@ -1,12 +1,13 @@
 from datetime import datetime
 from decimal import Decimal
+import re
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
-from app.models import Voucher, VoucherLine
+from app.models import Fund, Voucher, VoucherLine
 from app.schemas import VoucherCreate, VoucherRead, VoucherUpdate
 
 router = APIRouter(prefix="/vouchers", tags=["vouchers"])
@@ -26,6 +27,38 @@ def _voucher_statement():
     )
 
 
+def _slugify(text: str) -> str:
+    value = re.sub(r"[^0-9A-Za-z가-힣]+", "-", text).strip("-").lower()
+    return value or f"fund-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+
+
+def _resolve_fund(db: Session, fund_id: int | None, fund_name: str | None) -> tuple[int | None, str | None]:
+    if fund_id:
+        fund = db.get(Fund, fund_id)
+        if not fund:
+            raise HTTPException(status_code=400, detail="선택한 회계/기금이 존재하지 않습니다.")
+        return fund.id, fund.name
+
+    normalized_name = (fund_name or "").strip()
+    if not normalized_name:
+        return None, None
+
+    existing = db.scalar(select(Fund).where(Fund.name == normalized_name))
+    if existing:
+        return existing.id, existing.name
+
+    candidate_code = _slugify(normalized_name)
+    suffix = 1
+    while db.scalar(select(Fund).where(Fund.code == candidate_code)):
+        suffix += 1
+        candidate_code = f"{_slugify(normalized_name)}-{suffix}"
+
+    fund = Fund(code=candidate_code, name=normalized_name)
+    db.add(fund)
+    db.flush()
+    return fund.id, fund.name
+
+
 @router.get("", response_model=list[VoucherRead])
 def list_vouchers(limit: int = Query(default=200, le=1000), db: Session = Depends(get_db)):
     return db.scalars(_voucher_statement().limit(limit)).unique().all()
@@ -42,13 +75,15 @@ def get_voucher(voucher_id: int, db: Session = Depends(get_db)):
 @router.post("", response_model=VoucherRead)
 def create_voucher(payload: VoucherCreate, db: Session = Depends(get_db)):
     timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+    resolved_fund_id, resolved_fund_name = _resolve_fund(db, payload.fund_id, payload.fund_name)
     voucher = Voucher(
         voucher_no=f"V-{timestamp}",
         voucher_date=payload.voucher_date,
         entry_type=payload.entry_type,
         description=payload.description,
         amount=Decimal(payload.amount),
-        fund_id=payload.fund_id,
+        fund_id=resolved_fund_id,
+        fund_name=resolved_fund_name,
         account_id=payload.account_id,
         member_id=payload.member_id,
         counterparty=payload.counterparty,
@@ -79,6 +114,18 @@ def update_voucher(voucher_id: int, payload: VoucherUpdate, db: Session = Depend
     if not voucher:
         raise HTTPException(status_code=404, detail="Voucher not found")
     update_data = payload.model_dump(exclude_unset=True)
+
+    if "fund_id" in update_data or "fund_name" in update_data:
+        resolved_fund_id, resolved_fund_name = _resolve_fund(
+            db,
+            update_data.get("fund_id", voucher.fund_id),
+            update_data.get("fund_name", voucher.fund_name),
+        )
+        voucher.fund_id = resolved_fund_id
+        voucher.fund_name = resolved_fund_name
+        update_data.pop("fund_id", None)
+        update_data.pop("fund_name", None)
+
     for key, value in update_data.items():
         setattr(voucher, key, value)
     db.commit()

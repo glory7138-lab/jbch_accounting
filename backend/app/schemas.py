@@ -19,6 +19,8 @@ class AccountRead(BaseModel):
     major_category: str | None = None
     middle_category: str | None = None
     report_category: str | None = None
+    account_type: str | None = None
+    finance_category: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -28,8 +30,19 @@ class MemberRead(BaseModel):
     member_no: str | None = None
     name: str
     department_name: str | None = None
+    gender_or_section: str | None = None
+    age_or_class: str | None = None
+    source_sheet: str | None = None
 
     model_config = {"from_attributes": True}
+
+
+class MemberLookupResponse(BaseModel):
+    found: bool
+    lookup_key: str
+    member: MemberRead | None = None
+    found_by: str | None = None
+    message: str | None = None
 
 
 class VoucherLineCreate(BaseModel):
@@ -47,6 +60,7 @@ class VoucherCreate(BaseModel):
     description: str
     amount: Decimal
     fund_id: int | None = None
+    fund_name: str | None = None
     account_id: int | None = None
     member_id: int | None = None
     counterparty: str | None = None
@@ -62,6 +76,7 @@ class VoucherUpdate(BaseModel):
     description: str | None = None
     amount: Decimal | None = None
     fund_id: int | None = None
+    fund_name: str | None = None
     account_id: int | None = None
     member_id: int | None = None
     counterparty: str | None = None
@@ -88,6 +103,7 @@ class VoucherRead(BaseModel):
     entry_type: str
     description: str
     amount: Decimal
+    fund_name: str | None = None
     counterparty: str | None = None
     note: str | None = None
     source_workbook: str | None = None

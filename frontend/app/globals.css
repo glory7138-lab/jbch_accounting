@@ -24,13 +24,25 @@ a { color: inherit; text-decoration: none; }
 .stat-card__title { color: var(--muted); margin-bottom: 8px; }
 .stat-card__value { font-size: 28px; font-weight: 700; }
 .section-title { margin: 28px 0 12px; }
+.section-header, .page-hero, .voucher-form__header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+.hero-tips { display: grid; gap: 4px; min-width: 240px; color: var(--muted); }
+.table-wrap { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; }
-th, td { padding: 10px 8px; border-bottom: 1px solid var(--border); text-align: left; font-size: 14px; }
+th, td { padding: 10px 8px; border-bottom: 1px solid var(--border); text-align: left; font-size: 14px; vertical-align: top; }
+.table-subtext { font-size: 12px; margin-top: 4px; }
 .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .form-grid h2 { grid-column: 1 / -1; margin: 0 0 8px; }
 .form-grid label { display: grid; gap: 6px; font-size: 14px; }
 .form-grid__wide { grid-column: 1 / -1; }
+.voucher-form { display: grid; gap: 16px; }
+.voucher-form__badge { background: #eef4ff; color: #1d4ed8; border-radius: 999px; padding: 8px 12px; font-size: 13px; font-weight: 600; }
+.voucher-form__footer { justify-content: flex-end; }
+.lookup-grid { display: grid; gap: 12px; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 8px; }
+.helper-card { padding: 14px; border: 1px solid #dbeafe; background: #f8fbff; border-radius: 12px; }
+.inline-row { display: flex; gap: 8px; }
+.inline-row input { flex: 1; }
 input, select, textarea, button { font: inherit; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border); }
+select[size] { min-height: 220px; }
 button { background: var(--primary); color: white; border: none; cursor: pointer; }
 button.secondary { background: #475467; }
 .actions { display: flex; gap: 8px; flex-wrap: wrap; }
@@ -38,6 +50,7 @@ button.secondary { background: #475467; }
 .code { font-family: Consolas, monospace; background: #eef2ff; padding: 2px 6px; border-radius: 6px; }
 pre { white-space: pre-wrap; word-break: break-word; background: #0f172a; color: #e2e8f0; padding: 16px; border-radius: 12px; overflow: auto; }
 @media (max-width: 900px) {
-  .grid--3, .grid--2, .form-grid { grid-template-columns: 1fr; }
-  .nav { flex-direction: column; align-items: flex-start; gap: 10px; }
+  .grid--3, .grid--2, .form-grid, .lookup-grid { grid-template-columns: 1fr; }
+  .nav, .section-header, .page-hero, .voucher-form__header, .inline-row { flex-direction: column; align-items: flex-start; gap: 10px; }
+  .hero-tips { min-width: auto; }
 }
