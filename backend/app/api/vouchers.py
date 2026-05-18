@@ -8,7 +8,14 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
 from app.models import Account, Fund, Member, Voucher, VoucherLine
-from app.schemas import VoucherCreate, VoucherRead, VoucherUpdate, WeeklyOfferingCreate, WeeklyOfferingResponse
+from app.schemas import (
+    VoucherCreate,
+    VoucherRead,
+    VoucherUpdate,
+    WeeklyOfferingBatchCreate,
+    WeeklyOfferingCreate,
+    WeeklyOfferingResponse,
+)
 
 router = APIRouter(prefix="/vouchers", tags=["vouchers"])
 
@@ -99,6 +106,50 @@ def _compose_weekly_note(payload: WeeklyOfferingCreate) -> str | None:
     return " | ".join(part for part in parts if part).strip() or None
 
 
+def _create_weekly_vouchers(payload: WeeklyOfferingCreate, db: Session) -> tuple[list[Voucher], Decimal, Decimal]:
+    member = db.get(Member, payload.member_id) if payload.member_id else None
+    counterparty = (member.name if member else payload.member_name) or None
+    note = _compose_weekly_note(payload)
+
+    created: list[Voucher] = []
+    total_amount = Decimal("0")
+    cash_total = Decimal("0")
+
+    for code, raw_amount in payload.offerings.items():
+        amount = Decimal(raw_amount)
+        if code not in WEEKLY_OFFERING_CODES or amount <= 0:
+            continue
+
+        account = db.scalar(select(Account).where(Account.code == code))
+        if not account:
+            raise HTTPException(status_code=400, detail=f"계정코드 {code}를 찾지 못했습니다.")
+
+        description = _account_display(account)
+        resolved_fund_id, resolved_fund_name = _resolve_fund(db, None, description)
+        voucher = Voucher(
+            voucher_no=_build_voucher_no(prefix="W", suffix=code),
+            voucher_date=payload.voucher_date,
+            entry_type="income",
+            description=description,
+            amount=amount,
+            fund_id=resolved_fund_id,
+            fund_name=resolved_fund_name,
+            account_id=account.id,
+            member_id=member.id if member else payload.member_id,
+            counterparty=counterparty,
+            note=note,
+            source_workbook="weekly_offering_ui",
+            source_sheet="weekly_offering_entry",
+        )
+        db.add(voucher)
+        created.append(voucher)
+        total_amount += amount
+        if not payload.is_transfer:
+            cash_total += amount
+
+    return created, total_amount, cash_total
+
+
 @router.get("", response_model=list[VoucherRead])
 def list_vouchers(limit: int = Query(default=200, le=1000), db: Session = Depends(get_db)):
     return db.scalars(_voucher_statement().limit(limit)).unique().all()
@@ -149,46 +200,7 @@ def create_voucher(payload: VoucherCreate, db: Session = Depends(get_db)):
 
 @router.post("/weekly-offering", response_model=WeeklyOfferingResponse)
 def create_weekly_offering(payload: WeeklyOfferingCreate, db: Session = Depends(get_db)):
-    member = db.get(Member, payload.member_id) if payload.member_id else None
-    counterparty = (member.name if member else payload.member_name) or None
-    note = _compose_weekly_note(payload)
-
-    created: list[Voucher] = []
-    total_amount = Decimal("0")
-    cash_total = Decimal("0")
-
-    for code, raw_amount in payload.offerings.items():
-        amount = Decimal(raw_amount)
-        if code not in WEEKLY_OFFERING_CODES or amount <= 0:
-            continue
-
-        account = db.scalar(select(Account).where(Account.code == code))
-        if not account:
-            raise HTTPException(status_code=400, detail=f"계정코드 {code}를 찾지 못했습니다.")
-
-        description = _account_display(account)
-        resolved_fund_id, resolved_fund_name = _resolve_fund(db, None, description)
-        voucher = Voucher(
-            voucher_no=_build_voucher_no(prefix="W", suffix=code),
-            voucher_date=payload.voucher_date,
-            entry_type="income",
-            description=description,
-            amount=amount,
-            fund_id=resolved_fund_id,
-            fund_name=resolved_fund_name,
-            account_id=account.id,
-            member_id=member.id if member else payload.member_id,
-            counterparty=counterparty,
-            note=note,
-            source_workbook="weekly_offering_ui",
-            source_sheet="weekly_offering_entry",
-        )
-        db.add(voucher)
-        created.append(voucher)
-        total_amount += amount
-        if not payload.is_transfer:
-            cash_total += amount
-
+    created, total_amount, cash_total = _create_weekly_vouchers(payload, db)
     if not created:
         raise HTTPException(status_code=400, detail="등록할 헌금 금액이 없습니다.")
 
@@ -199,6 +211,31 @@ def create_weekly_offering(payload: WeeklyOfferingCreate, db: Session = Depends(
         cash_total=cash_total,
         voucher_ids=[voucher.id for voucher in created],
         voucher_nos=[voucher.voucher_no for voucher in created],
+    )
+
+
+@router.post("/weekly-offering/bulk", response_model=WeeklyOfferingResponse)
+def create_weekly_offering_bulk(payload: WeeklyOfferingBatchCreate, db: Session = Depends(get_db)):
+    all_created: list[Voucher] = []
+    total_amount = Decimal("0")
+    cash_total = Decimal("0")
+
+    for row in payload.rows:
+        created, row_total, row_cash = _create_weekly_vouchers(row, db)
+        all_created.extend(created)
+        total_amount += row_total
+        cash_total += row_cash
+
+    if not all_created:
+        raise HTTPException(status_code=400, detail="등록할 헌금 행이 없습니다.")
+
+    db.commit()
+    return WeeklyOfferingResponse(
+        created_count=len(all_created),
+        total_amount=total_amount,
+        cash_total=cash_total,
+        voucher_ids=[voucher.id for voucher in all_created],
+        voucher_nos=[voucher.voucher_no for voucher in all_created],
     )
 
 

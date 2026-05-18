@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { apiFetch } from '../lib/api';
 
 const OFFERING_FIELDS = [
@@ -18,75 +18,92 @@ const OFFERING_FIELDS = [
   { code: '23000', label: '기타수입' },
 ];
 
-const initialOfferings = Object.fromEntries(OFFERING_FIELDS.map((field) => [field.code, '']));
-const initialState = {
-  voucher_date: new Date().toISOString().slice(0, 10),
-  envelope_no: '',
-  member_id: '',
-  member_key: '',
-  member_name: '',
-  department_name: '',
-  district_name: '',
-  is_transfer: false,
-  note: '',
-  offerings: initialOfferings,
-};
+const ROW_COUNT = 12;
+
+function createEmptyRow(index, voucherDate) {
+  return {
+    rowId: `row-${index}-${Date.now()}`,
+    voucher_date: voucherDate,
+    envelope_no: '',
+    member_id: '',
+    member_name: '',
+    department_name: '',
+    district_name: '',
+    is_transfer: false,
+    note: '',
+    offerings: Object.fromEntries(OFFERING_FIELDS.map((field) => [field.code, ''])),
+  };
+}
 
 function money(value) {
   return new Intl.NumberFormat('ko-KR').format(Number(value || 0));
 }
 
 export default function WeeklyOfferingForm({ onCreated }) {
-  const [form, setForm] = useState(initialState);
-  const [memberLookup, setMemberLookup] = useState(null);
+  const today = new Date().toISOString().slice(0, 10);
+  const [voucherDate, setVoucherDate] = useState(today);
+  const [rows, setRows] = useState(() => Array.from({ length: ROW_COUNT }, (_, index) => createEmptyRow(index, today)));
   const [memberSearchQuery, setMemberSearchQuery] = useState('');
   const [memberSearchResults, setMemberSearchResults] = useState([]);
-  const [lookupLoading, setLookupLoading] = useState(false);
+  const [activeRowId, setActiveRowId] = useState(null);
   const [searchLoading, setSearchLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [resultMessage, setResultMessage] = useState('');
 
-  const month = useMemo(() => Number(form.voucher_date.slice(5, 7)), [form.voucher_date]);
   const totalAmount = useMemo(
-    () => OFFERING_FIELDS.reduce((sum, field) => sum + Number(form.offerings[field.code] || 0), 0),
-    [form.offerings],
+    () => rows.reduce((sum, row) => sum + OFFERING_FIELDS.reduce((acc, field) => acc + Number(row.offerings[field.code] || 0), 0), 0),
+    [rows],
   );
-  const cashTotal = form.is_transfer ? 0 : totalAmount;
+  const cashTotal = useMemo(
+    () => rows.reduce((sum, row) => sum + (row.is_transfer ? 0 : OFFERING_FIELDS.reduce((acc, field) => acc + Number(row.offerings[field.code] || 0), 0)), 0),
+    [rows],
+  );
 
-  function applySelectedMember(member) {
-    setMemberLookup({ found: true, member });
-    setForm((current) => ({
-      ...current,
-      member_id: String(member.id),
-      member_key: member.member_no || current.member_key,
-      envelope_no: current.envelope_no || member.member_no || '',
-      member_name: member.name || '',
-      department_name: member.department_name || '',
-    }));
-    setMemberSearchResults([]);
-    setMemberSearchQuery('');
+  function updateRow(rowId, patch) {
+    setRows((current) => current.map((row) => (row.rowId === rowId ? { ...row, ...patch } : row)));
   }
 
-  async function handleLookup() {
-    const key = (form.member_key || form.envelope_no).trim();
+  function updateOffering(rowId, code, value) {
+    setRows((current) =>
+      current.map((row) =>
+        row.rowId === rowId
+          ? {
+              ...row,
+              offerings: { ...row.offerings, [code]: value },
+            }
+          : row,
+      ),
+    );
+  }
+
+  async function autoLookupEnvelope(rowId) {
+    const row = rows.find((item) => item.rowId === rowId);
+    const key = row?.envelope_no?.trim();
     if (!key) return;
-    setLookupLoading(true);
     try {
       const result = await apiFetch(`/accounts/member-lookup?memberKey=${encodeURIComponent(key)}`);
-      setMemberLookup(result);
       if (result.found && result.member) {
-        applySelectedMember(result.member);
+        updateRow(rowId, {
+          member_id: String(result.member.id),
+          member_name: result.member.name || '',
+          department_name: result.member.department_name || '',
+        });
       }
     } catch (error) {
-      alert(`번호 조회 실패: ${error.message}`);
-    } finally {
-      setLookupLoading(false);
+      console.error(error);
     }
   }
 
-  async function handleSearch() {
+  async function handleMemberSearch() {
     const query = memberSearchQuery.trim();
-    if (!query) return;
+    if (!query) {
+      setMemberSearchResults([]);
+      return;
+    }
+    if (!activeRowId) {
+      alert('먼저 적용할 행의 이름 칸이나 봉투번호 칸을 한 번 클릭해줘.');
+      return;
+    }
     setSearchLoading(true);
     try {
       const results = await apiFetch(`/accounts/member-search?query=${encodeURIComponent(query)}`);
@@ -98,24 +115,29 @@ export default function WeeklyOfferingForm({ onCreated }) {
     }
   }
 
-  function setOffering(code, value) {
-    setForm((current) => ({
-      ...current,
-      offerings: {
-        ...current.offerings,
-        [code]: value,
-      },
-    }));
+  function applyMemberToActiveRow(member) {
+    if (!activeRowId) return;
+    updateRow(activeRowId, {
+      member_id: String(member.id),
+      envelope_no: member.member_no || '',
+      member_name: member.name || '',
+      department_name: member.department_name || '',
+    });
+    setMemberSearchResults([]);
+    setMemberSearchQuery('');
   }
 
-  function resetAmountsOnly() {
-    setForm((current) => ({
+  function addRows(count = 5) {
+    setRows((current) => [
       ...current,
-      note: '',
-      is_transfer: false,
-      offerings: { ...initialOfferings },
-    }));
+      ...Array.from({ length: count }, (_, index) => createEmptyRow(current.length + index, voucherDate)),
+    ]);
+  }
+
+  function clearRows() {
+    setRows(Array.from({ length: ROW_COUNT }, (_, index) => createEmptyRow(index, voucherDate)));
     setResultMessage('');
+    setMemberSearchResults([]);
   }
 
   async function handleSubmit(event) {
@@ -123,31 +145,35 @@ export default function WeeklyOfferingForm({ onCreated }) {
     setSaving(true);
     try {
       const payload = {
-        voucher_date: form.voucher_date,
-        month,
-        envelope_no: form.envelope_no.trim() || null,
-        member_id: form.member_id ? Number(form.member_id) : null,
-        member_name: form.member_name.trim() || null,
-        department_name: form.department_name.trim() || null,
-        district_name: form.district_name.trim() || null,
-        is_transfer: form.is_transfer,
-        note: form.note.trim() || null,
-        offerings: Object.fromEntries(
-          Object.entries(form.offerings)
-            .filter(([, value]) => Number(value || 0) > 0)
-            .map(([code, value]) => [code, Number(value)]),
-        ),
+        rows: rows
+          .map((row) => ({
+            voucher_date: voucherDate,
+            month: Number(voucherDate.slice(5, 7)),
+            envelope_no: row.envelope_no.trim() || null,
+            member_id: row.member_id ? Number(row.member_id) : null,
+            member_name: row.member_name.trim() || null,
+            department_name: row.department_name.trim() || null,
+            district_name: row.district_name.trim() || null,
+            is_transfer: row.is_transfer,
+            note: row.note.trim() || null,
+            offerings: Object.fromEntries(
+              Object.entries(row.offerings)
+                .filter(([, value]) => Number(value || 0) > 0)
+                .map(([code, value]) => [code, Number(value)]),
+            ),
+          }))
+          .filter((row) => Object.keys(row.offerings).length > 0),
       };
 
-      const result = await apiFetch('/vouchers/weekly-offering', {
+      const result = await apiFetch('/vouchers/weekly-offering/bulk', {
         method: 'POST',
         body: JSON.stringify(payload),
       });
-      setResultMessage(`등록 완료, ${result.created_count}건 생성, 총 ${money(result.total_amount)}원`);
-      resetAmountsOnly();
+      setResultMessage(`일괄 등록 완료, ${result.created_count}건 생성, 총 ${money(result.total_amount)}원`);
+      clearRows();
       onCreated?.();
     } catch (error) {
-      alert(`주간 헌금 등록 실패: ${error.message}`);
+      alert(`주간 헌금 일괄 등록 실패: ${error.message}`);
     } finally {
       setSaving(false);
     }
@@ -157,59 +183,38 @@ export default function WeeklyOfferingForm({ onCreated }) {
     <form className="card weekly-offering-form" onSubmit={handleSubmit}>
       <div className="section-header">
         <div>
-          <h2>주간 헌금 빠른 등록</h2>
-          <p className="muted">주일 오후에 봉투를 모아 한 사람씩 빠르게 입력하는 1차 화면이야.</p>
+          <h2>주간 헌금 일괄 등록</h2>
+          <p className="muted">봉투를 펼쳐놓고 엑셀처럼 한 줄씩 바로 넣는 화면이야. 여러 명을 한 번에 보고 저장할 수 있게 가로형으로 넓혔어.</p>
         </div>
-        <div className="voucher-form__badge">1차 정리용</div>
+        <div className="voucher-form__badge">가로 일괄입력</div>
       </div>
 
-      <div className="weekly-meta-grid">
+      <div className="weekly-toolbar">
         <label>
-          날짜
-          <input type="date" value={form.voucher_date} onChange={(e) => setForm({ ...form, voucher_date: e.target.value })} />
+          기준 날짜
+          <input type="date" value={voucherDate} onChange={(e) => setVoucherDate(e.target.value)} />
         </label>
         <label>
-          월
-          <input value={month} readOnly />
-        </label>
-        <label>
-          봉투번호
+          활성 행에 이름 검색
           <div className="inline-row">
-            <input value={form.envelope_no} onChange={(e) => setForm({ ...form, envelope_no: e.target.value, member_key: e.target.value })} />
-            <button type="button" className="secondary" onClick={handleLookup} disabled={lookupLoading}>{lookupLoading ? '조회 중...' : '번호 조회'}</button>
+            <input value={memberSearchQuery} onChange={(e) => setMemberSearchQuery(e.target.value)} placeholder="예: 형석, 청년" />
+            <button type="button" className="secondary" onClick={handleMemberSearch} disabled={searchLoading}>
+              {searchLoading ? '검색 중...' : '이름 검색'}
+            </button>
           </div>
         </label>
-        <label>
-          이름 일부 검색
-          <div className="inline-row">
-            <input value={memberSearchQuery} onChange={(e) => setMemberSearchQuery(e.target.value)} placeholder="예: 형석" />
-            <button type="button" className="secondary" onClick={handleSearch} disabled={searchLoading}>{searchLoading ? '검색 중...' : '이름 검색'}</button>
-          </div>
-        </label>
-        <label>
-          이름
-          <input value={form.member_name} onChange={(e) => setForm({ ...form, member_name: e.target.value })} />
-        </label>
-        <label>
-          회별
-          <input value={form.department_name} onChange={(e) => setForm({ ...form, department_name: e.target.value })} />
-        </label>
-        <label>
-          구역
-          <input value={form.district_name} onChange={(e) => setForm({ ...form, district_name: e.target.value })} />
-        </label>
-        <label className="checkbox-field">
-          <span>이체헌금</span>
-          <input type="checkbox" checked={form.is_transfer} onChange={(e) => setForm({ ...form, is_transfer: e.target.checked })} />
-        </label>
+        <div className="weekly-toolbar__summary helper-card">
+          <div><strong>총 합계</strong><br />{money(totalAmount)}원</div>
+          <div><strong>현금 합계</strong><br />{money(cashTotal)}원</div>
+        </div>
       </div>
 
       {memberSearchResults.length ? (
         <div className="helper-card">
-          <strong>검색된 헌금자 목록</strong>
+          <strong>검색된 헌금자 목록, 클릭하면 현재 활성 행에 적용</strong>
           <div className="search-result-list">
             {memberSearchResults.map((member) => (
-              <button key={member.id} type="button" className="search-result-item" onClick={() => applySelectedMember(member)}>
+              <button key={member.id} type="button" className="search-result-item" onClick={() => applyMemberToActiveRow(member)}>
                 <span>{member.name}</span>
                 <span className="muted">번호 {member.member_no || '-'} · {member.department_name || '소속 없음'}</span>
               </button>
@@ -218,50 +223,96 @@ export default function WeeklyOfferingForm({ onCreated }) {
         </div>
       ) : null}
 
-      <div className="weekly-entry-table-wrap">
-        <table className="weekly-entry-table">
+      <div className="weekly-entry-table-wrap batch-grid-wrap">
+        <table className="weekly-entry-table batch-grid-table">
           <thead>
             <tr>
+              <th>봉투번호</th>
+              <th>이름</th>
+              <th>회별</th>
+              <th>구역</th>
+              <th>이체</th>
               {OFFERING_FIELDS.map((field) => (
                 <th key={field.code}>{field.label}<br /><span className="muted">({field.code})</span></th>
               ))}
               <th>비고</th>
-              <th>현금 합계</th>
+              <th>행 합계</th>
             </tr>
           </thead>
           <tbody>
-            <tr>
-              {OFFERING_FIELDS.map((field) => (
-                <td key={field.code}>
-                  <input
-                    type="number"
-                    min="0"
-                    value={form.offerings[field.code]}
-                    onChange={(e) => setOffering(field.code, e.target.value)}
-                    placeholder="0"
-                  />
-                </td>
-              ))}
-              <td>
-                <input value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} placeholder="메모" />
-              </td>
-              <td>
-                <strong>{money(cashTotal)}</strong>
-              </td>
-            </tr>
+            {rows.map((row, index) => {
+              const rowTotal = OFFERING_FIELDS.reduce((sum, field) => sum + Number(row.offerings[field.code] || 0), 0);
+              return (
+                <tr key={row.rowId} className={activeRowId === row.rowId ? 'active-row' : ''}>
+                  <td>
+                    <input
+                      value={row.envelope_no}
+                      onFocus={() => setActiveRowId(row.rowId)}
+                      onChange={(e) => updateRow(row.rowId, { envelope_no: e.target.value })}
+                      onBlur={() => autoLookupEnvelope(row.rowId)}
+                      placeholder={`${index + 1}`}
+                    />
+                  </td>
+                  <td>
+                    <input
+                      value={row.member_name}
+                      onFocus={() => setActiveRowId(row.rowId)}
+                      onChange={(e) => updateRow(row.rowId, { member_name: e.target.value })}
+                    />
+                  </td>
+                  <td>
+                    <input
+                      value={row.department_name}
+                      onFocus={() => setActiveRowId(row.rowId)}
+                      onChange={(e) => updateRow(row.rowId, { department_name: e.target.value })}
+                    />
+                  </td>
+                  <td>
+                    <input
+                      value={row.district_name}
+                      onFocus={() => setActiveRowId(row.rowId)}
+                      onChange={(e) => updateRow(row.rowId, { district_name: e.target.value })}
+                    />
+                  </td>
+                  <td>
+                    <input
+                      type="checkbox"
+                      checked={row.is_transfer}
+                      onFocus={() => setActiveRowId(row.rowId)}
+                      onChange={(e) => updateRow(row.rowId, { is_transfer: e.target.checked })}
+                    />
+                  </td>
+                  {OFFERING_FIELDS.map((field) => (
+                    <td key={field.code}>
+                      <input
+                        type="number"
+                        min="0"
+                        value={row.offerings[field.code]}
+                        onFocus={() => setActiveRowId(row.rowId)}
+                        onChange={(e) => updateOffering(row.rowId, field.code, e.target.value)}
+                        placeholder="0"
+                      />
+                    </td>
+                  ))}
+                  <td>
+                    <input
+                      value={row.note}
+                      onFocus={() => setActiveRowId(row.rowId)}
+                      onChange={(e) => updateRow(row.rowId, { note: e.target.value })}
+                    />
+                  </td>
+                  <td><strong>{money(rowTotal)}</strong></td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
 
-      <div className="helper-card weekly-summary-card">
-        <div><strong>총 헌금액</strong><br />{money(totalAmount)}원</div>
-        <div><strong>현금 합계</strong><br />{money(cashTotal)}원</div>
-        <div><strong>이체 여부</strong><br />{form.is_transfer ? '이체헌금' : '현금봉투'}</div>
-      </div>
-
       <div className="actions">
-        <button type="submit" disabled={saving}>{saving ? '등록 중...' : '주간 헌금 등록'}</button>
-        <button type="button" className="secondary" onClick={resetAmountsOnly}>금액만 초기화</button>
+        <button type="submit" disabled={saving}>{saving ? '일괄 등록 중...' : '주간 헌금 일괄 등록'}</button>
+        <button type="button" className="secondary" onClick={() => addRows(5)}>행 5개 추가</button>
+        <button type="button" className="secondary" onClick={clearRows}>전체 비우기</button>
       </div>
 
       {resultMessage ? <div className="helper-card">{resultMessage}</div> : null}

@@ -96,6 +96,10 @@ class WeeklyOfferingCreate(BaseModel):
     offerings: dict[str, Decimal] = Field(default_factory=dict)
 
 
+class WeeklyOfferingBatchCreate(BaseModel):
+    rows: list[WeeklyOfferingCreate] = Field(default_factory=list)
+
+
 class WeeklyOfferingResponse(BaseModel):
     created_count: int
     total_amount: Decimal
