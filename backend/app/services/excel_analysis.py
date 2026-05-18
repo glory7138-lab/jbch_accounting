@@ -164,9 +164,13 @@ def build_schema_brief(analysis: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def analyze_sample_directory(base_dir: str | Path) -> dict[str, Any]:
+def _list_workbooks(base_dir: str | Path) -> list[Path]:
     base_path = Path(base_dir)
-    workbooks = sorted(base_path.glob("*.xlsx"))
+    return sorted(path for path in base_path.glob("*.xlsx") if not path.name.startswith("~$"))
+
+
+def analyze_sample_directory(base_dir: str | Path) -> dict[str, Any]:
+    workbooks = _list_workbooks(base_dir)
     analysis = [analyze_workbook(path) for path in workbooks]
     return {"files": analysis, "schema_brief": build_schema_brief(analysis)}
 
@@ -190,8 +194,7 @@ def _match_column(columns: list[str], keywords: list[str]) -> str | None:
 
 
 def seed_reference_data(db: Session, base_dir: str | Path) -> dict[str, int]:
-    base_path = Path(base_dir)
-    workbooks = sorted(base_path.glob("*.xlsx"))
+    workbooks = _list_workbooks(base_dir)
     imported = 0
 
     for workbook_path in workbooks:

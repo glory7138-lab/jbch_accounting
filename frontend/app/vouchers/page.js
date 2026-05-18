@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import VoucherForm from '../../components/VoucherForm';
+import WeeklyOfferingForm from '../../components/WeeklyOfferingForm';
 import { apiFetch } from '../../lib/api';
 
 function money(value) {
@@ -27,16 +28,17 @@ export default function VouchersPage() {
       <div className="page-hero card">
         <div>
           <h1>전표 관리</h1>
-          <p className="muted">헌금 봉투 번호로 사람을 찾고, 세부 계정 설명을 보면서 수입/지출을 기록하도록 화면을 다듬었어.</p>
+          <p className="muted">우선은 주간 헌금 봉투를 편하게 정리하는 1차 화면을 맨 위에 두고, 아래에는 일반 전표 입력을 남겨뒀어.</p>
         </div>
         <div className="hero-tips">
           <div><strong>추천 흐름</strong></div>
-          <div>1. 헌금자 번호 조회</div>
-          <div>2. 헌금 항목 직접 입력</div>
-          <div>3. 세부 계정 확인 후 저장</div>
+          <div>1. 봉투번호/이름으로 사람 찾기</div>
+          <div>2. 헌금 항목별 금액 입력</div>
+          <div>3. 한 번에 등록</div>
         </div>
       </div>
 
+      <WeeklyOfferingForm onCreated={loadVouchers} />
       <VoucherForm onCreated={loadVouchers} />
 
       <div className="card">

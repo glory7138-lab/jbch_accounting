@@ -83,6 +83,27 @@ class VoucherUpdate(BaseModel):
     note: str | None = None
 
 
+class WeeklyOfferingCreate(BaseModel):
+    voucher_date: date
+    month: int | None = None
+    envelope_no: str | None = None
+    member_id: int | None = None
+    member_name: str | None = None
+    department_name: str | None = None
+    district_name: str | None = None
+    is_transfer: bool = False
+    note: str | None = None
+    offerings: dict[str, Decimal] = Field(default_factory=dict)
+
+
+class WeeklyOfferingResponse(BaseModel):
+    created_count: int
+    total_amount: Decimal
+    cash_total: Decimal
+    voucher_ids: list[int] = []
+    voucher_nos: list[str] = []
+
+
 class VoucherLineRead(BaseModel):
     id: int
     line_no: int
