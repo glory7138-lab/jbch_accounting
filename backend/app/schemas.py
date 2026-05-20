@@ -101,6 +101,26 @@ class WeeklyOfferingBatchCreate(BaseModel):
     rows: list[WeeklyOfferingCreate] = Field(default_factory=list)
 
 
+class WeeklyOfferingRowRead(BaseModel):
+    voucher_date: date
+    envelope_no: str | None = None
+    member_id: int | None = None
+    member_name: str | None = None
+    department_name: str | None = None
+    district_name: str | None = None
+    is_transfer: bool = False
+    note: str | None = None
+    offerings: dict[str, Decimal] = Field(default_factory=dict)
+    row_total: Decimal = Field(default=0)
+
+
+class WeeklyOfferingSheetResponse(BaseModel):
+    voucher_date: date
+    rows: list[WeeklyOfferingRowRead] = Field(default_factory=list)
+    total_amount: Decimal = Field(default=0)
+    cash_total: Decimal = Field(default=0)
+
+
 class WeeklyOfferingResponse(BaseModel):
     created_count: int
     total_amount: Decimal

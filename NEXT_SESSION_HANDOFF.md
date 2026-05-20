@@ -87,6 +87,24 @@ AI 추천 화면과 백엔드 추천 API에 모델 선택을 추가했음.
 - AI 결과에 실제 사용 모델(`used_model`) 표시
 - OpenAI API 키가 없으면 기존처럼 fallback 규칙 사용
 
+### 2026-05-20 주간 헌금 화면 재구성
+사용자 요청에 맞춰 주간 헌금 일괄 등록 흐름을 날짜 중심으로 다시 바꿨음.
+
+- `/vouchers`는 오늘 날짜 화면으로 보내는 진입점만 담당
+- 실제 주간 헌금 화면은 `/vouchers/[voucherDate]`
+- 일반 전표 입력은 `/vouchers/manual`로 분리
+- 기준 날짜를 바꾸면 새 화면으로 이동하면서 해당 날짜 저장 내역을 바로 불러옴
+- 날짜별 저장은 개별 row append 방식이 아니라 **그 날짜 전체 시트 동기화 방식**으로 변경
+- 다른 사람 행으로 이동하면 현재 입력 상태를 자동 저장하도록 프론트 동작 수정
+- 저장 버튼을 눌러도 화면을 비우거나 최근 전표 목록으로 내려가지 않고 그대로 유지
+- 하단 최근 전표 목록 섹션은 제거
+- 봉투번호 입력 시 이름/회별/구역 자동 채움
+- 이름 일부 입력 시 봉투번호/회별/구역 자동 채움
+- 회별/구역은 read only 처리
+- 총액/현금합계는 화면 하단에도 표시
+- 백엔드에 날짜별 주간헌금 조회 API(`GET /api/vouchers/weekly-offering?voucherDate=...`) 추가
+- 백엔드에 날짜별 주간헌금 저장 API(`PUT /api/vouchers/weekly-offering`) 추가
+
 ## 5. 최근 커밋
 - `d337a7e` Align frontend API port with backend
 - `8277b1a` Convert weekly offering entry to batch grid

@@ -1,9 +1,10 @@
-from datetime import datetime
+from collections import defaultdict
+from datetime import date, datetime
 from decimal import Decimal
 import re
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
@@ -15,10 +16,13 @@ from app.schemas import (
     WeeklyOfferingBatchCreate,
     WeeklyOfferingCreate,
     WeeklyOfferingResponse,
+    WeeklyOfferingSheetResponse,
 )
 
 router = APIRouter(prefix="/vouchers", tags=["vouchers"])
 
+WEEKLY_SOURCE_WORKBOOK = "weekly_offering_ui"
+WEEKLY_SOURCE_SHEET = "weekly_offering_entry"
 WEEKLY_OFFERING_CODES = {
     "11000",
     "11200",
@@ -47,6 +51,19 @@ def _voucher_statement():
             joinedload(Voucher.lines).joinedload(VoucherLine.fund),
         )
         .order_by(Voucher.voucher_date.desc(), Voucher.id.desc())
+    )
+
+
+def _weekly_statement(voucher_date: date):
+    return (
+        select(Voucher)
+        .options(joinedload(Voucher.account), joinedload(Voucher.member))
+        .where(
+            Voucher.voucher_date == voucher_date,
+            Voucher.source_workbook == WEEKLY_SOURCE_WORKBOOK,
+            Voucher.source_sheet == WEEKLY_SOURCE_SHEET,
+        )
+        .order_by(Voucher.member_id.asc(), Voucher.counterparty.asc(), Voucher.id.asc())
     )
 
 
@@ -106,6 +123,33 @@ def _compose_weekly_note(payload: WeeklyOfferingCreate) -> str | None:
     return " | ".join(part for part in parts if part).strip() or None
 
 
+def _parse_weekly_note(note: str | None) -> dict:
+    parsed = {
+        "envelope_no": None,
+        "department_name": None,
+        "district_name": None,
+        "is_transfer": False,
+        "note": None,
+    }
+    if not note:
+        return parsed
+
+    extras: list[str] = []
+    for token in [item.strip() for item in note.split("|") if item.strip()]:
+        if token.startswith("봉투번호 "):
+            parsed["envelope_no"] = token.removeprefix("봉투번호 ").strip() or None
+        elif token.startswith("회별 "):
+            parsed["department_name"] = token.removeprefix("회별 ").strip() or None
+        elif token.startswith("구역 "):
+            parsed["district_name"] = token.removeprefix("구역 ").strip() or None
+        elif token == "이체헌금":
+            parsed["is_transfer"] = True
+        else:
+            extras.append(token)
+    parsed["note"] = " | ".join(extras) if extras else None
+    return parsed
+
+
 def _create_weekly_vouchers(payload: WeeklyOfferingCreate, db: Session) -> tuple[list[Voucher], Decimal, Decimal]:
     member = db.get(Member, payload.member_id) if payload.member_id else None
     counterparty = (member.name if member else payload.member_name) or None
@@ -138,8 +182,8 @@ def _create_weekly_vouchers(payload: WeeklyOfferingCreate, db: Session) -> tuple
             member_id=member.id if member else payload.member_id,
             counterparty=counterparty,
             note=note,
-            source_workbook="weekly_offering_ui",
-            source_sheet="weekly_offering_entry",
+            source_workbook=WEEKLY_SOURCE_WORKBOOK,
+            source_sheet=WEEKLY_SOURCE_SHEET,
         )
         db.add(voucher)
         created.append(voucher)
@@ -148,6 +192,145 @@ def _create_weekly_vouchers(payload: WeeklyOfferingCreate, db: Session) -> tuple
             cash_total += amount
 
     return created, total_amount, cash_total
+
+
+def _weekly_group_key(voucher: Voucher) -> str:
+    parsed_note = _parse_weekly_note(voucher.note)
+    if voucher.member_id:
+        return f"member:{voucher.member_id}"
+    if parsed_note["envelope_no"]:
+        return f"envelope:{parsed_note['envelope_no']}"
+    if voucher.counterparty:
+        return f"name:{voucher.counterparty}"
+    return f"voucher:{voucher.id}"
+
+
+def _natural_key(value: str | None) -> tuple[int, int | str]:
+    text = (value or "").strip()
+    if text.isdigit():
+        return (0, int(text))
+    return (1, text)
+
+
+def _build_weekly_row(vouchers: list[Voucher]) -> dict:
+    first = vouchers[0]
+    member = first.member
+    parsed_note = _parse_weekly_note(first.note)
+
+    offerings: dict[str, Decimal] = {}
+    row_total = Decimal("0")
+    for voucher in vouchers:
+        code = voucher.account.code if voucher.account else None
+        if not code or code not in WEEKLY_OFFERING_CODES:
+            continue
+        amount = Decimal(voucher.amount)
+        offerings[code] = offerings.get(code, Decimal("0")) + amount
+        row_total += amount
+
+    district_name = parsed_note["district_name"]
+    if not district_name and member:
+        district_name = member.district_name or member.gender_or_section or member.age_or_class
+
+    return {
+        "voucher_date": first.voucher_date,
+        "envelope_no": parsed_note["envelope_no"] or (member.member_no if member else None),
+        "member_id": member.id if member else first.member_id,
+        "member_name": (member.name if member else first.counterparty) or None,
+        "department_name": parsed_note["department_name"] or (member.department_name if member else None),
+        "district_name": district_name,
+        "is_transfer": parsed_note["is_transfer"],
+        "note": parsed_note["note"],
+        "offerings": offerings,
+        "row_total": row_total,
+    }
+
+
+def _load_weekly_sheet(db: Session, voucher_date: date) -> dict:
+    vouchers = db.scalars(_weekly_statement(voucher_date)).unique().all()
+    grouped: dict[str, list[Voucher]] = defaultdict(list)
+    for voucher in vouchers:
+        grouped[_weekly_group_key(voucher)].append(voucher)
+
+    rows = [_build_weekly_row(group) for group in grouped.values()]
+    rows.sort(key=lambda row: (_natural_key(row.get("envelope_no")), row.get("member_name") or ""))
+
+    total_amount = sum((Decimal(row["row_total"]) for row in rows), Decimal("0"))
+    cash_total = sum((Decimal(row["row_total"]) for row in rows if not row.get("is_transfer")), Decimal("0"))
+    return {
+        "voucher_date": voucher_date,
+        "rows": rows,
+        "total_amount": total_amount,
+        "cash_total": cash_total,
+    }
+
+
+def _sync_weekly_sheet(db: Session, payload: WeeklyOfferingBatchCreate) -> WeeklyOfferingResponse:
+    if not payload.rows:
+        raise HTTPException(status_code=400, detail="저장할 주간 헌금 행 정보가 없습니다.")
+
+    voucher_dates = {row.voucher_date for row in payload.rows}
+    if len(voucher_dates) != 1:
+        raise HTTPException(status_code=400, detail="한 번에 하나의 기준 날짜만 저장할 수 있습니다.")
+
+    target_date = voucher_dates.pop()
+    db.execute(
+        delete(Voucher).where(
+            Voucher.voucher_date == target_date,
+            Voucher.source_workbook == WEEKLY_SOURCE_WORKBOOK,
+            Voucher.source_sheet == WEEKLY_SOURCE_SHEET,
+        )
+    )
+    db.flush()
+
+    all_created: list[Voucher] = []
+    total_amount = Decimal("0")
+    cash_total = Decimal("0")
+
+    for row in payload.rows:
+        created, row_total, row_cash = _create_weekly_vouchers(row, db)
+        all_created.extend(created)
+        total_amount += row_total
+        cash_total += row_cash
+
+    db.commit()
+    return WeeklyOfferingResponse(
+        created_count=len(all_created),
+        total_amount=total_amount,
+        cash_total=cash_total,
+        voucher_ids=[voucher.id for voucher in all_created],
+        voucher_nos=[voucher.voucher_no for voucher in all_created],
+    )
+
+
+@router.get("/weekly-offering", response_model=WeeklyOfferingSheetResponse)
+def get_weekly_offering_sheet(voucherDate: date = Query(...), db: Session = Depends(get_db)):
+    return _load_weekly_sheet(db, voucherDate)
+
+
+@router.put("/weekly-offering", response_model=WeeklyOfferingResponse)
+def sync_weekly_offering(payload: WeeklyOfferingBatchCreate, db: Session = Depends(get_db)):
+    return _sync_weekly_sheet(db, payload)
+
+
+@router.post("/weekly-offering", response_model=WeeklyOfferingResponse)
+def create_weekly_offering(payload: WeeklyOfferingCreate, db: Session = Depends(get_db)):
+    created, total_amount, cash_total = _create_weekly_vouchers(payload, db)
+    if not created:
+        raise HTTPException(status_code=400, detail="등록할 헌금 금액이 없습니다.")
+
+    db.commit()
+    return WeeklyOfferingResponse(
+        created_count=len(created),
+        total_amount=total_amount,
+        cash_total=cash_total,
+        voucher_ids=[voucher.id for voucher in created],
+        voucher_nos=[voucher.voucher_no for voucher in created],
+    )
+
+
+@router.post("/weekly-offering/bulk", response_model=WeeklyOfferingResponse)
+def create_weekly_offering_bulk(payload: WeeklyOfferingBatchCreate, db: Session = Depends(get_db)):
+    return _sync_weekly_sheet(db, payload)
 
 
 @router.get("", response_model=list[VoucherRead])
@@ -196,47 +379,6 @@ def create_voucher(payload: VoucherCreate, db: Session = Depends(get_db)):
     db.add(voucher)
     db.commit()
     return db.scalars(_voucher_statement().where(Voucher.id == voucher.id)).unique().first()
-
-
-@router.post("/weekly-offering", response_model=WeeklyOfferingResponse)
-def create_weekly_offering(payload: WeeklyOfferingCreate, db: Session = Depends(get_db)):
-    created, total_amount, cash_total = _create_weekly_vouchers(payload, db)
-    if not created:
-        raise HTTPException(status_code=400, detail="등록할 헌금 금액이 없습니다.")
-
-    db.commit()
-    return WeeklyOfferingResponse(
-        created_count=len(created),
-        total_amount=total_amount,
-        cash_total=cash_total,
-        voucher_ids=[voucher.id for voucher in created],
-        voucher_nos=[voucher.voucher_no for voucher in created],
-    )
-
-
-@router.post("/weekly-offering/bulk", response_model=WeeklyOfferingResponse)
-def create_weekly_offering_bulk(payload: WeeklyOfferingBatchCreate, db: Session = Depends(get_db)):
-    all_created: list[Voucher] = []
-    total_amount = Decimal("0")
-    cash_total = Decimal("0")
-
-    for row in payload.rows:
-        created, row_total, row_cash = _create_weekly_vouchers(row, db)
-        all_created.extend(created)
-        total_amount += row_total
-        cash_total += row_cash
-
-    if not all_created:
-        raise HTTPException(status_code=400, detail="등록할 헌금 행이 없습니다.")
-
-    db.commit()
-    return WeeklyOfferingResponse(
-        created_count=len(all_created),
-        total_amount=total_amount,
-        cash_total=cash_total,
-        voucher_ids=[voucher.id for voucher in all_created],
-        voucher_nos=[voucher.voucher_no for voucher in all_created],
-    )
 
 
 @router.put("/{voucher_id}", response_model=VoucherRead)

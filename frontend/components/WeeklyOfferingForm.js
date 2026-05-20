@@ -1,6 +1,7 @@
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { apiFetch } from '../lib/api';
 
 const OFFERING_FIELDS = [
@@ -22,7 +23,7 @@ const ROW_COUNT = 20;
 
 function createEmptyRow(index, voucherDate) {
   return {
-    rowId: `row-${index}-${Date.now()}`,
+    rowId: `row-${index}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     voucher_date: voucherDate,
     envelope_no: '',
     member_id: '',
@@ -51,18 +52,49 @@ function memberSummary(member, foundBy) {
   return parts.join(' · ');
 }
 
-export default function WeeklyOfferingForm({ onCreated }) {
-  const today = new Date().toISOString().slice(0, 10);
-  const [voucherDate, setVoucherDate] = useState(today);
-  const [rows, setRows] = useState(() => Array.from({ length: ROW_COUNT }, (_, index) => createEmptyRow(index, today)));
-  const [memberSearchQuery, setMemberSearchQuery] = useState('');
-  const [memberSearchResults, setMemberSearchResults] = useState([]);
+function normalizeLoadedRows(rows, voucherDate) {
+  const normalized = (rows || []).map((row, index) => ({
+    rowId: `saved-${index}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    voucher_date: voucherDate,
+    envelope_no: row.envelope_no || '',
+    member_id: row.member_id ? String(row.member_id) : '',
+    member_name: row.member_name || '',
+    department_name: row.department_name || '',
+    district_name: row.district_name || '',
+    is_transfer: Boolean(row.is_transfer),
+    note: row.note || '',
+    offerings: Object.fromEntries(
+      OFFERING_FIELDS.map((field) => [field.code, row.offerings?.[field.code] ? String(row.offerings[field.code]) : '']),
+    ),
+  }));
+
+  while (normalized.length < ROW_COUNT) {
+    normalized.push(createEmptyRow(normalized.length, voucherDate));
+  }
+  return normalized;
+}
+
+function hasRowContent(row) {
+  return Boolean(
+    (row.envelope_no || '').trim() ||
+      (row.member_name || '').trim() ||
+      (row.note || '').trim() ||
+      row.is_transfer ||
+      OFFERING_FIELDS.some((field) => Number(row.offerings[field.code] || 0) > 0),
+  );
+}
+
+export default function WeeklyOfferingForm({ voucherDate }) {
+  const router = useRouter();
+  const [rows, setRows] = useState(() => normalizeLoadedRows([], voucherDate));
   const [activeRowId, setActiveRowId] = useState(null);
-  const [searchLoading, setSearchLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [resultMessage, setResultMessage] = useState('');
+  const [statusMessage, setStatusMessage] = useState('');
   const [lookupStates, setLookupStates] = useState({});
   const lookupTimersRef = useRef({});
+  const activeRowRef = useRef(null);
+  const dirtyRef = useRef(false);
 
   const totalAmount = useMemo(
     () => rows.reduce((sum, row) => sum + OFFERING_FIELDS.reduce((acc, field) => acc + Number(row.offerings[field.code] || 0), 0), 0),
@@ -73,8 +105,19 @@ export default function WeeklyOfferingForm({ onCreated }) {
     [rows],
   );
 
-  function updateRow(rowId, patch) {
+  function markDirty() {
+    dirtyRef.current = true;
+  }
+
+  function clearDirty() {
+    dirtyRef.current = false;
+  }
+
+  function updateRow(rowId, patch, options = { markDirty: true }) {
     setRows((current) => current.map((row) => (row.rowId === rowId ? { ...row, ...patch } : row)));
+    if (options.markDirty !== false) {
+      markDirty();
+    }
   }
 
   function updateOffering(rowId, code, value) {
@@ -88,6 +131,7 @@ export default function WeeklyOfferingForm({ onCreated }) {
           : row,
       ),
     );
+    markDirty();
   }
 
   function setLookupState(rowId, nextState) {
@@ -95,13 +139,17 @@ export default function WeeklyOfferingForm({ onCreated }) {
   }
 
   function applyMemberToRow(rowId, member, foundBy = 'member_no') {
-    updateRow(rowId, {
-      member_id: String(member.id),
-      envelope_no: member.member_no || '',
-      member_name: member.name || '',
-      department_name: member.department_name || '',
-      district_name: memberDistrict(member),
-    });
+    updateRow(
+      rowId,
+      {
+        member_id: String(member.id),
+        envelope_no: member.member_no || '',
+        member_name: member.name || '',
+        department_name: member.department_name || '',
+        district_name: memberDistrict(member),
+      },
+      { markDirty: true },
+    );
     setLookupState(rowId, {
       status: 'found',
       message: memberSummary(member, foundBy) || '헌금자 정보 조회 완료',
@@ -113,9 +161,9 @@ export default function WeeklyOfferingForm({ onCreated }) {
 
     if (!query) {
       if (foundBy === 'name_search') {
-        updateRow(rowId, { member_id: '', department_name: '', district_name: '' });
+        updateRow(rowId, { member_id: '', department_name: '', district_name: '' }, { markDirty: false });
       } else {
-        updateRow(rowId, { member_id: '', member_name: '', department_name: '', district_name: '' });
+        updateRow(rowId, { member_id: '', member_name: '', department_name: '', district_name: '' }, { markDirty: false });
       }
       setLookupState(rowId, null);
       return;
@@ -130,10 +178,10 @@ export default function WeeklyOfferingForm({ onCreated }) {
       }
 
       if (foundBy === 'name_search') {
-        updateRow(rowId, { member_id: '', department_name: '', district_name: '' });
+        updateRow(rowId, { member_id: '', department_name: '', district_name: '' }, { markDirty: false });
         setLookupState(rowId, { status: 'missing', message: '일치하는 이름 없음' });
       } else {
-        updateRow(rowId, { member_id: '', member_name: '', department_name: '', district_name: '' });
+        updateRow(rowId, { member_id: '', member_name: '', department_name: '', district_name: '' }, { markDirty: false });
         setLookupState(rowId, { status: 'missing', message: '일치하는 봉투번호 없음' });
       }
     } catch (error) {
@@ -150,9 +198,9 @@ export default function WeeklyOfferingForm({ onCreated }) {
     const trimmedValue = value.trim();
     if (!trimmedValue) {
       if (foundBy === 'name_search') {
-        updateRow(rowId, { member_id: '', department_name: '', district_name: '' });
+        updateRow(rowId, { member_id: '', department_name: '', district_name: '' }, { markDirty: false });
       } else {
-        updateRow(rowId, { member_id: '', member_name: '', department_name: '', district_name: '' });
+        updateRow(rowId, { member_id: '', member_name: '', department_name: '', district_name: '' }, { markDirty: false });
       }
       setLookupState(rowId, null);
       return;
@@ -162,6 +210,75 @@ export default function WeeklyOfferingForm({ onCreated }) {
       autoLookupMember(rowId, trimmedValue, foundBy);
       delete lookupTimersRef.current[rowId];
     }, 300);
+  }
+
+  function serializeRows() {
+    return rows.map((row) => ({
+      voucher_date: voucherDate,
+      month: Number(voucherDate.slice(5, 7)),
+      envelope_no: row.envelope_no.trim() || null,
+      member_id: row.member_id ? Number(row.member_id) : null,
+      member_name: row.member_name.trim() || null,
+      department_name: row.department_name.trim() || null,
+      district_name: row.district_name.trim() || null,
+      is_transfer: row.is_transfer,
+      note: row.note.trim() || null,
+      offerings: Object.fromEntries(
+        Object.entries(row.offerings)
+          .filter(([, value]) => Number(value || 0) > 0)
+          .map(([code, value]) => [code, Number(value)]),
+      ),
+    }));
+  }
+
+  async function loadSheet(targetDate) {
+    setLoading(true);
+    try {
+      const result = await apiFetch(`/vouchers/weekly-offering?voucherDate=${encodeURIComponent(targetDate)}`);
+      setRows(normalizeLoadedRows(result.rows || [], targetDate));
+      setLookupStates({});
+      setStatusMessage(result.rows?.length ? `${targetDate} 저장 내역을 불러왔어.` : `${targetDate} 저장 내역이 없어. 새로 입력하면 돼.`);
+      clearDirty();
+    } catch (error) {
+      setStatusMessage(`불러오기 실패: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function saveSheet({ silent = false } = {}) {
+    if (saving) return true;
+    setSaving(true);
+    try {
+      const result = await apiFetch('/vouchers/weekly-offering', {
+        method: 'PUT',
+        body: JSON.stringify({ rows: serializeRows() }),
+      });
+      clearDirty();
+      if (!silent) {
+        setStatusMessage(`저장 완료, 총 ${money(result.total_amount)}원`);
+      }
+      return true;
+    } catch (error) {
+      setStatusMessage(`저장 실패: ${error.message}`);
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleRowFocus(rowId) {
+    if (activeRowRef.current && activeRowRef.current !== rowId && dirtyRef.current) {
+      const currentRow = rows.find((row) => row.rowId === activeRowRef.current);
+      if (currentRow && hasRowContent(currentRow)) {
+        const ok = await saveSheet({ silent: true });
+        if (ok) {
+          setStatusMessage(`${currentRow.member_name || currentRow.envelope_no || '이전 행'} 자동 저장됨`);
+        }
+      }
+    }
+    activeRowRef.current = rowId;
+    setActiveRowId(rowId);
   }
 
   function handleEnvelopeChange(rowId, value) {
@@ -174,87 +291,34 @@ export default function WeeklyOfferingForm({ onCreated }) {
     queueLookup(rowId, value, 'name_search');
   }
 
-  async function handleMemberSearch() {
-    const query = memberSearchQuery.trim();
-    if (!query) {
-      setMemberSearchResults([]);
-      return;
-    }
-    if (!activeRowId) {
-      alert('먼저 적용할 행의 이름 칸이나 봉투번호 칸을 한 번 클릭해줘.');
-      return;
-    }
-    setSearchLoading(true);
-    try {
-      const results = await apiFetch(`/accounts/member-search?query=${encodeURIComponent(query)}`);
-      setMemberSearchResults(results);
-    } catch (error) {
-      alert(`이름 검색 실패: ${error.message}`);
-    } finally {
-      setSearchLoading(false);
-    }
-  }
-
-  function applyMemberToActiveRow(member) {
-    if (!activeRowId) return;
-    applyMemberToRow(activeRowId, member, 'name_search');
-    setMemberSearchResults([]);
-    setMemberSearchQuery('');
-  }
-
-  function addRows(count = 5) {
+  function addRows(count = 10) {
     setRows((current) => [
       ...current,
       ...Array.from({ length: count }, (_, index) => createEmptyRow(current.length + index, voucherDate)),
     ]);
-  }
-
-  function clearRows() {
-    Object.values(lookupTimersRef.current).forEach(clearTimeout);
-    lookupTimersRef.current = {};
-    setRows(Array.from({ length: ROW_COUNT }, (_, index) => createEmptyRow(index, voucherDate)));
-    setResultMessage('');
-    setMemberSearchResults([]);
-    setLookupStates({});
+    markDirty();
   }
 
   async function handleSubmit(event) {
     event.preventDefault();
-    setSaving(true);
-    try {
-      const payload = {
-        rows: rows
-          .map((row) => ({
-            voucher_date: voucherDate,
-            month: Number(voucherDate.slice(5, 7)),
-            envelope_no: row.envelope_no.trim() || null,
-            member_id: row.member_id ? Number(row.member_id) : null,
-            member_name: row.member_name.trim() || null,
-            department_name: row.department_name.trim() || null,
-            district_name: row.district_name.trim() || null,
-            is_transfer: row.is_transfer,
-            note: row.note.trim() || null,
-            offerings: Object.fromEntries(
-              Object.entries(row.offerings)
-                .filter(([, value]) => Number(value || 0) > 0)
-                .map(([code, value]) => [code, Number(value)]),
-            ),
-          }))
-          .filter((row) => Object.keys(row.offerings).length > 0),
-      };
+    await saveSheet();
+  }
 
-      const result = await apiFetch('/vouchers/weekly-offering/bulk', {
-        method: 'POST',
-        body: JSON.stringify(payload),
-      });
-      setResultMessage(`일괄 등록 완료, ${result.created_count}건 생성, 총 ${money(result.total_amount)}원`);
-      clearRows();
-      onCreated?.();
-    } catch (error) {
-      alert(`주간 헌금 일괄 등록 실패: ${error.message}`);
-    } finally {
-      setSaving(false);
+  async function handleDateChange(nextDate) {
+    if (!nextDate || nextDate === voucherDate) return;
+    if (dirtyRef.current) {
+      const ok = await saveSheet({ silent: true });
+      if (!ok) return;
     }
+    router.push(`/vouchers/${nextDate}`);
+  }
+
+  useEffect(() => {
+    loadSheet(voucherDate);
+  }, [voucherDate]);
+
+  if (loading) {
+    return <div className="card">주간 헌금 내역 불러오는 중...</div>;
   }
 
   return (
@@ -262,47 +326,25 @@ export default function WeeklyOfferingForm({ onCreated }) {
       <div className="section-header">
         <div>
           <h2>주간 헌금 일괄 등록</h2>
-          <p className="muted">봉투번호나 이름 일부만 넣어도 이름, 회별, 구역을 자동으로 채우고, 헌금 항목은 한 화면에서 다 보이게 묶었어.</p>
+          <p className="muted">기준 날짜를 바꾸면 해당 날짜 화면으로 이동하고, 저장된 헌금자와 금액이 바로 다시 보여져.</p>
         </div>
-        <div className="voucher-form__badge">빠른 탭 입력</div>
+        <div className="voucher-form__badge">행 이동 자동저장</div>
       </div>
 
-      <div className="weekly-toolbar">
+      <div className="weekly-toolbar weekly-toolbar--compact">
         <label>
           기준 날짜
-          <input type="date" value={voucherDate} onChange={(e) => setVoucherDate(e.target.value)} />
+          <input type="date" value={voucherDate} onChange={(e) => handleDateChange(e.target.value)} />
         </label>
-        <label>
-          활성 행에 이름 검색
-          <div className="inline-row">
-            <input value={memberSearchQuery} onChange={(e) => setMemberSearchQuery(e.target.value)} placeholder="예: 형석, 청년" />
-            <button type="button" className="secondary" onClick={handleMemberSearch} disabled={searchLoading}>
-              {searchLoading ? '검색 중...' : '이름 검색'}
-            </button>
-          </div>
-        </label>
+        <div className="helper-card weekly-toolbar__status">
+          <strong>상태</strong>
+          <div className="muted">{statusMessage || '입력 대기 중'}</div>
+        </div>
         <div className="weekly-toolbar__summary helper-card">
           <div><strong>총 합계</strong><br />{money(totalAmount)}원</div>
           <div><strong>현금 합계</strong><br />{money(cashTotal)}원</div>
         </div>
       </div>
-
-      {memberSearchResults.length ? (
-        <div className="helper-card">
-          <strong>검색된 헌금자 목록, 클릭하면 현재 활성 행에 적용</strong>
-          <div className="search-result-list">
-            {memberSearchResults.map((member) => (
-              <button key={member.id} type="button" className="search-result-item" onClick={() => applyMemberToActiveRow(member)}>
-                <span>{member.name}</span>
-                <span className="muted">
-                  번호 {member.member_no || '-'} · {member.department_name || '소속 없음'}
-                  {memberDistrict(member) ? ` · ${memberDistrict(member)}` : ''}
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
-      ) : null}
 
       <div className="weekly-entry-table-wrap batch-grid-wrap">
         <table className="weekly-entry-table batch-grid-table">
@@ -337,16 +379,10 @@ export default function WeeklyOfferingForm({ onCreated }) {
                     <div className="envelope-cell">
                       <input
                         value={row.envelope_no}
-                        onFocus={() => setActiveRowId(row.rowId)}
+                        onFocus={() => handleRowFocus(row.rowId)}
                         onChange={(e) => handleEnvelopeChange(row.rowId, e.target.value)}
                         onBlur={() => autoLookupMember(row.rowId, row.envelope_no, 'member_no')}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault();
-                            autoLookupMember(row.rowId, row.envelope_no, 'member_no');
-                          }
-                        }}
-                        placeholder={`${index + 1}`}
+                        placeholder=""
                       />
                       {lookupStates[row.rowId]?.message ? (
                         <div className={`lookup-hint lookup-hint--${lookupStates[row.rowId]?.status || 'idle'}`}>
@@ -358,31 +394,23 @@ export default function WeeklyOfferingForm({ onCreated }) {
                   <td>
                     <input
                       value={row.member_name}
-                      onFocus={() => setActiveRowId(row.rowId)}
+                      onFocus={() => handleRowFocus(row.rowId)}
                       onChange={(e) => handleMemberNameChange(row.rowId, e.target.value)}
                       onBlur={() => autoLookupMember(row.rowId, row.member_name, 'name_search')}
-                      placeholder="이름 일부 가능"
+                      placeholder={index === 0 ? '이름 일부 가능' : ''}
                     />
                   </td>
                   <td>
-                    <input
-                      value={row.department_name}
-                      onFocus={() => setActiveRowId(row.rowId)}
-                      onChange={(e) => updateRow(row.rowId, { department_name: e.target.value })}
-                    />
+                    <input value={row.department_name} readOnly className="readonly-input" tabIndex={-1} />
                   </td>
                   <td>
-                    <input
-                      value={row.district_name}
-                      onFocus={() => setActiveRowId(row.rowId)}
-                      onChange={(e) => updateRow(row.rowId, { district_name: e.target.value })}
-                    />
+                    <input value={row.district_name} readOnly className="readonly-input" tabIndex={-1} />
                   </td>
                   <td>
                     <input
                       type="checkbox"
                       checked={row.is_transfer}
-                      onFocus={() => setActiveRowId(row.rowId)}
+                      onFocus={() => handleRowFocus(row.rowId)}
                       onChange={(e) => updateRow(row.rowId, { is_transfer: e.target.checked })}
                     />
                   </td>
@@ -395,7 +423,7 @@ export default function WeeklyOfferingForm({ onCreated }) {
                             type="number"
                             min="0"
                             value={row.offerings[field.code]}
-                            onFocus={() => setActiveRowId(row.rowId)}
+                            onFocus={() => handleRowFocus(row.rowId)}
                             onChange={(e) => updateOffering(row.rowId, field.code, e.target.value)}
                             placeholder="0"
                           />
@@ -406,7 +434,7 @@ export default function WeeklyOfferingForm({ onCreated }) {
                   <td>
                     <input
                       value={row.note}
-                      onFocus={() => setActiveRowId(row.rowId)}
+                      onFocus={() => handleRowFocus(row.rowId)}
                       onChange={(e) => updateRow(row.rowId, { note: e.target.value })}
                     />
                   </td>
@@ -418,13 +446,16 @@ export default function WeeklyOfferingForm({ onCreated }) {
         </table>
       </div>
 
-      <div className="actions">
-        <button type="submit" disabled={saving}>{saving ? '일괄 등록 중...' : '주간 헌금 일괄 등록'}</button>
-        <button type="button" className="secondary" onClick={() => addRows(10)}>행 10개 추가</button>
-        <button type="button" className="secondary" onClick={clearRows}>전체 비우기</button>
+      <div className="weekly-footer-bar helper-card">
+        <div className="weekly-footer-bar__totals">
+          <div><strong>총 합계</strong><br />{money(totalAmount)}원</div>
+          <div><strong>현금 합계</strong><br />{money(cashTotal)}원</div>
+        </div>
+        <div className="actions">
+          <button type="submit" disabled={saving}>{saving ? '저장 중...' : '저장'}</button>
+          <button type="button" className="secondary" onClick={() => addRows(10)}>행 10개 추가</button>
+        </div>
       </div>
-
-      {resultMessage ? <div className="helper-card">{resultMessage}</div> : null}
     </form>
   );
 }
