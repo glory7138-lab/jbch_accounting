@@ -1,6 +1,6 @@
 # AccountingApp
 
-기존 엑셀 장부(`월말결산_SAMPLE.xlsx`, `현금현황_SAMPLE.xlsx`, `회계장부_SAMPLE2.xlsx`)를 분석해 만든 웹 기반 회계 프로그램 초안입니다.
+기존 엑셀 장부(`월말결산_SAMPLE.xlsx`, `헌금현황_SAMPLE.xlsx`, `회계장부_SAMPLE2.xlsx`)를 분석해 만든 웹 기반 회계 프로그램 초안입니다.
 
 ## 구성
 
@@ -22,7 +22,7 @@
 cd D:\AccountingApp\backend
 python -m pip install -r requirements.txt
 copy .env.example .env
-python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8500
 ```
 
 ## 프론트엔드 실행
@@ -38,9 +38,9 @@ npm run dev
 
 ## API 예시
 
-- 헬스체크: `GET http://127.0.0.1:8000/health`
-- 샘플 분석: `GET http://127.0.0.1:8000/api/imports/sample-analysis`
-- 전표 엑셀 다운로드: `GET http://127.0.0.1:8000/api/exports/vouchers.xlsx`
+- 헬스체크: `GET http://127.0.0.1:8500/health`
+- 샘플 분석: `GET http://127.0.0.1:8500/api/imports/sample-analysis`
+- 전표 엑셀 다운로드: `GET http://127.0.0.1:8500/api/exports/vouchers.xlsx`
 
 ## 참고
 

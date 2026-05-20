@@ -149,7 +149,7 @@ def build_schema_brief(analysis: list[dict[str, Any]]) -> dict[str, Any]:
     inferred_domains = [
         {"table": "funds", "reason": "회계장부 파일에 통합계정, 일반계정, 부서/헌금별 시트가 반복됨"},
         {"table": "accounts", "reason": "계정코드 시트에 회계코드와 관리항목 계층이 존재함"},
-        {"table": "members", "reason": "현금현황 파일에 헌금 봉투 번호 시트가 있어 봉투번호가 사실상 식별키 역할을 함"},
+        {"table": "members", "reason": "헌금현황 파일에 헌금 봉투 번호 시트가 있어 봉투번호가 사실상 식별키 역할을 함"},
         {"table": "vouchers", "reason": "회계장부 시트들이 날짜, 적요, 입금/지출, 잔액 중심의 거래 원장을 가짐"},
         {"table": "voucher_lines", "reason": "수입/지출과 계정코드가 함께 존재해 다중 분개 확장이 필요함"},
         {"table": "accounting_periods", "reason": "월말결산 양식과 주간보고 자료가 월 단위 마감을 전제로 함"},
