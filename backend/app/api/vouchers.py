@@ -1,9 +1,12 @@
 from collections import defaultdict
 from datetime import date, datetime
 from decimal import Decimal
+from io import BytesIO
 import re
 
+import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, joinedload
 
@@ -305,6 +308,50 @@ def _sync_weekly_sheet(db: Session, payload: WeeklyOfferingBatchCreate) -> Weekl
 @router.get("/weekly-offering", response_model=WeeklyOfferingSheetResponse)
 def get_weekly_offering_sheet(voucherDate: date = Query(...), db: Session = Depends(get_db)):
     return _load_weekly_sheet(db, voucherDate)
+
+
+@router.get("/weekly-offering.xlsx")
+def export_weekly_offering_sheet(voucherDate: date = Query(...), db: Session = Depends(get_db)):
+    sheet = _load_weekly_sheet(db, voucherDate)
+    rows = []
+    for row in sheet["rows"]:
+        item = {
+            "일자": row["voucher_date"].isoformat() if hasattr(row["voucher_date"], "isoformat") else str(row["voucher_date"]),
+            "봉투번호": row.get("envelope_no") or "",
+            "이름": row.get("member_name") or "",
+            "회별": row.get("department_name") or "",
+            "구역": row.get("district_name") or "",
+            "이체": "Y" if row.get("is_transfer") else "",
+            "비고": row.get("note") or "",
+            "합계": float(row.get("row_total") or 0),
+        }
+        for code, label in [
+            ("11000", "십일조"),
+            ("11200", "주일헌금"),
+            ("13000", "후원회비"),
+            ("11400", "집회헌금"),
+            ("11100", "감사헌금"),
+            ("11500", "기타헌금"),
+            ("11300", "건축헌금"),
+            ("12000", "선교회비"),
+            ("12200", "세계선교"),
+            ("14000", "사랑의헌금"),
+            ("12100", "세계선교분담금"),
+            ("23000", "기타수입"),
+        ]:
+            item[label] = float(row.get("offerings", {}).get(code, 0) or 0)
+        rows.append(item)
+
+    df = pd.DataFrame(rows)
+    buffer = BytesIO()
+    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+        df.to_excel(writer, index=False, sheet_name="주간헌금현황")
+    buffer.seek(0)
+    return StreamingResponse(
+        iter([buffer.getvalue()]),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="weekly-offering-{voucherDate.isoformat()}.xlsx"'},
+    )
 
 
 @router.put("/weekly-offering", response_model=WeeklyOfferingResponse)

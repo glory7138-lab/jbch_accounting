@@ -310,7 +310,7 @@ export default function WeeklyOfferingForm({ voucherDate }) {
       const ok = await saveSheet({ silent: true });
       if (!ok) return;
     }
-    router.push(`/vouchers/${nextDate}`);
+    router.push(`/offerings/weekly/${nextDate}`);
   }
 
   useEffect(() => {

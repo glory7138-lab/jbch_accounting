@@ -21,6 +21,14 @@ a { color: inherit; text-decoration: none; }
 .grid--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .grid--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 18px; box-shadow: 0 6px 20px rgba(15, 23, 42, 0.05); }
+.section-tabs { display: grid; gap: 14px; }
+.section-tabs h1 { margin: 0; }
+.section-tabs__links { display: flex; flex-wrap: wrap; gap: 8px; }
+.section-tabs__links a { padding: 10px 12px; border: 1px solid var(--border); border-radius: 999px; background: #fff; color: var(--muted); }
+.section-tabs__links a.active { background: #eef4ff; color: #1d4ed8; border-color: #bfd5ff; }
+.export-actions { justify-content: flex-end; }
+.export-link { display: inline-flex; align-items: center; padding: 10px 12px; border-radius: 10px; background: #0f172a; color: white; }
+.stats-inline { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .stat-card__title { color: var(--muted); margin-bottom: 8px; }
 .stat-card__value { font-size: 28px; font-weight: 700; }
 .section-title { margin: 28px 0 12px; }
@@ -82,7 +90,7 @@ button.secondary { background: #475467; }
 .code { font-family: Consolas, monospace; background: #eef2ff; padding: 2px 6px; border-radius: 6px; }
 pre { white-space: pre-wrap; word-break: break-word; background: #0f172a; color: #e2e8f0; padding: 16px; border-radius: 12px; overflow: auto; }
 @media (max-width: 900px) {
-  .grid--3, .grid--2, .form-grid, .lookup-grid, .weekly-meta-grid, .weekly-summary-card, .weekly-toolbar, .weekly-toolbar__summary, .weekly-footer-bar__totals { grid-template-columns: 1fr; }
+  .grid--3, .grid--2, .form-grid, .lookup-grid, .weekly-meta-grid, .weekly-summary-card, .weekly-toolbar, .weekly-toolbar__summary, .weekly-footer-bar__totals, .stats-inline { grid-template-columns: 1fr; }
   .nav, .section-header, .page-hero, .voucher-form__header, .inline-row, .weekly-footer-bar { flex-direction: column; align-items: flex-start; gap: 10px; }
   .hero-tips { min-width: auto; }
   .offering-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); min-width: 360px; }

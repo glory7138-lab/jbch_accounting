@@ -90,8 +90,8 @@ AI 추천 화면과 백엔드 추천 API에 모델 선택을 추가했음.
 ### 2026-05-20 주간 헌금 화면 재구성
 사용자 요청에 맞춰 주간 헌금 일괄 등록 흐름을 날짜 중심으로 다시 바꿨음.
 
-- `/vouchers`는 오늘 날짜 화면으로 보내는 진입점만 담당
-- 실제 주간 헌금 화면은 `/vouchers/[voucherDate]`
+- `/vouchers`는 이제 레거시 진입점이고 `/offerings` 쪽으로 넘김
+- 실제 주간 헌금 화면은 `/offerings/weekly/[voucherDate]`
 - 일반 전표 입력은 `/vouchers/manual`로 분리
 - 기준 날짜를 바꾸면 새 화면으로 이동하면서 해당 날짜 저장 내역을 바로 불러옴
 - 날짜별 저장은 개별 row append 방식이 아니라 **그 날짜 전체 시트 동기화 방식**으로 변경
@@ -104,6 +104,62 @@ AI 추천 화면과 백엔드 추천 API에 모델 선택을 추가했음.
 - 총액/현금합계는 화면 하단에도 표시
 - 백엔드에 날짜별 주간헌금 조회 API(`GET /api/vouchers/weekly-offering?voucherDate=...`) 추가
 - 백엔드에 날짜별 주간헌금 저장 API(`PUT /api/vouchers/weekly-offering`) 추가
+- 현재 날짜 화면 엑셀 다운로드 API(`GET /api/vouchers/weekly-offering.xlsx?voucherDate=...`) 추가
+
+### 2026-05-20 헌금현황/회계장부 메뉴 확장
+사용자 요청에 맞춰 대메뉴/서브메뉴 구조와 화면별 엑셀 다운로드 기반을 추가했음.
+
+#### 프론트 메뉴 구조
+- 상단 대메뉴
+  - `헌금현황` → `/offerings`
+  - `회계장부` → `/ledger`
+  - `전표입력` → `/vouchers/manual`
+- 헌금현황 서브메뉴
+  - `/offerings/weekly/[voucherDate]` 주간헌금현황
+  - `/offerings/cumulative` 주간헌금현황 누계
+  - `/offerings/department-counts` 회별 참여자 수
+  - `/offerings/department-amounts` 회별 참여금액
+  - `/offerings/envelopes` 헌금봉투 번호 조회/수정/등록
+- 회계장부 서브메뉴
+  - `/ledger/integrated` 통합계정
+  - `/ledger/general` 일반계정
+  - `/ledger/school-support` 교회학교후원회비
+  - `/ledger/love-offering` 사랑의 헌금
+  - `/ledger/mission-fee` 선교회비
+  - `/ledger/building` 건축계정
+  - `/ledger/elevator` 승강기계정
+  - `/ledger/overseas` 해외후원
+  - `/ledger/domestic-mission` 국내선교
+  - `/ledger/account-codes` 계정코드
+
+#### 새 백엔드 API
+- 헌금현황 누계 조회/엑셀
+  - `GET /api/offerings/weekly-cumulative`
+  - `GET /api/offerings/weekly-cumulative.xlsx`
+- 회별 참여자/금액 집계 및 엑셀
+  - `GET /api/offerings/department-summary`
+  - `GET /api/offerings/department-summary-counts.xlsx`
+  - `GET /api/offerings/department-summary-amounts.xlsx`
+- 헌금봉투 번호 조회/등록/수정/엑셀
+  - `GET /api/offerings/envelopes`
+  - `POST /api/offerings/envelopes`
+  - `PUT /api/offerings/envelopes/{member_id}`
+  - `GET /api/offerings/envelopes.xlsx`
+- 회계장부 공통 조회/등록/수정/엑셀
+  - `GET /api/ledger/entries`
+  - `POST /api/ledger/entries`
+  - `PUT /api/ledger/entries/{voucher_id}`
+  - `GET /api/ledger/entries.xlsx`
+- 계정코드 조회/등록/수정/업로드/엑셀
+  - `GET /api/ledger/account-codes`
+  - `POST /api/ledger/account-codes`
+  - `PUT /api/ledger/account-codes/{account_id}`
+  - `POST /api/ledger/account-codes/upload`
+  - `GET /api/ledger/account-codes.xlsx`
+
+#### 검증
+- 백엔드 새 API 함수 직접 호출 확인 완료
+- 프론트 `next build` 통과 완료
 
 ## 5. 최근 커밋
 - `d337a7e` Align frontend API port with backend
