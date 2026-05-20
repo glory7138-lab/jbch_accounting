@@ -76,6 +76,17 @@
 - 백엔드 부팅 시 `district_name` 컬럼을 자동 보정하고, 샘플 데이터 재부트스트랩 시 기존 멤버 정보도 업데이트되게 수정
 - 프론트 `next build`까지 통과 확인 완료
 
+### 2026-05-20 AI 모델 추가
+AI 추천 화면과 백엔드 추천 API에 모델 선택을 추가했음.
+
+- 선택 가능 모델
+  - `gpt-4.1-nano`
+  - `gpt-4o`
+  - `o1-mini`
+- `backend/.env`, `backend/.env.example`에 `OPENAI_MODEL` 기본값 추가
+- AI 결과에 실제 사용 모델(`used_model`) 표시
+- OpenAI API 키가 없으면 기존처럼 fallback 규칙 사용
+
 ## 5. 최근 커밋
 - `d337a7e` Align frontend API port with backend
 - `8277b1a` Convert weekly offering entry to batch grid

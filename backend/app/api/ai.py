@@ -10,4 +10,4 @@ router = APIRouter(prefix="/ai", tags=["ai"])
 
 @router.post("/suggest-account", response_model=AiSuggestionResponse)
 def recommend_account(payload: AiSuggestionRequest, db: Session = Depends(get_db)):
-    return suggest_account(db, description=payload.description, amount=payload.amount)
+    return suggest_account(db, description=payload.description, amount=payload.amount, model=payload.model)

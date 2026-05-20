@@ -46,3 +46,4 @@ npm run dev
 
 - 앱 시작 시 DB가 비어 있으면 샘플 엑셀에서 `funds`, `accounts`, `members`를 자동 적재합니다.
 - OpenAI API를 쓰려면 `backend/.env`에 `OPENAI_API_KEY`를 추가하세요.
+- AI 추천 모델은 `backend/.env`의 `OPENAI_MODEL`로 기본값을 정할 수 있고, 현재 `gpt-4.1-nano`, `gpt-4o`, `o1-mini`를 지원합니다.

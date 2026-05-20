@@ -11,6 +11,7 @@ from app.config import get_settings
 from app.models import Account, AiSuggestionLog
 
 settings = get_settings()
+SUPPORTED_MODELS = {"gpt-4.1-nano", "gpt-4o", "o1-mini"}
 
 
 def _fallback_classifier(description: str, accounts: list[Account]) -> dict:
@@ -33,6 +34,7 @@ def _fallback_classifier(description: str, accounts: list[Account]) -> dict:
                     "rationale": "키워드 기반 규칙 추천입니다.",
                     "candidate_accounts": [{"code": account.code, "name": account.name}],
                     "used_fallback": True,
+                    "used_model": "fallback",
                 }
     first = accounts[0] if accounts else None
     return {
@@ -42,11 +44,19 @@ def _fallback_classifier(description: str, accounts: list[Account]) -> dict:
         "rationale": "기본 추천입니다. 계정코드 학습 데이터가 더 쌓이면 정확도가 좋아집니다.",
         "candidate_accounts": ([{"code": first.code, "name": first.name}] if first else []),
         "used_fallback": True,
+        "used_model": "fallback",
     }
 
 
-def suggest_account(db: Session, description: str, amount: Decimal | None = None) -> dict:
+def _resolve_model(requested_model: str | None) -> str:
+    candidate = (requested_model or settings.openai_model or "gpt-4.1-nano").strip()
+    return candidate if candidate in SUPPORTED_MODELS else "gpt-4.1-nano"
+
+
+def suggest_account(db: Session, description: str, amount: Decimal | None = None, model: str | None = None) -> dict:
     accounts = db.scalars(select(Account).where(Account.is_active == True).order_by(Account.code.asc()).limit(80)).all()
+    selected_model = _resolve_model(model)
+
     if not settings.openai_api_key:
         result = _fallback_classifier(description, accounts)
         db.add(AiSuggestionLog(description=description, suggested_account_code=result["account_code"], suggested_account_name=result["account_name"], confidence=result["confidence"], rationale=result["rationale"], raw_response=result))
@@ -68,10 +78,10 @@ def suggest_account(db: Session, description: str, amount: Decimal | None = None
         "description": description,
         "amount": float(amount) if amount is not None else None,
         "accounts": account_options,
-        "instruction": "적요와 금액을 보고 가장 적절한 계정코드 하나를 추천하고 confidence(0~1), rationale을 JSON으로 반환하세요.",
+        "instruction": "적요와 금액을 보고 가장 적절한 계정코드 하나를 추천하고 confidence(0~1), rationale, candidate_accounts를 JSON으로 반환하세요.",
     }
     response = client.responses.create(
-        model="gpt-4.1-nano",
+        model=selected_model,
         input=[{"role": "user", "content": [{"type": "text", "text": json.dumps(prompt, ensure_ascii=False)}]}],
     )
     text = response.output_text.strip()
@@ -89,6 +99,7 @@ def suggest_account(db: Session, description: str, amount: Decimal | None = None
         "rationale": parsed.get("rationale"),
         "candidate_accounts": parsed.get("candidate_accounts", []),
         "used_fallback": parsed.get("used_fallback", False),
+        "used_model": selected_model if not parsed.get("used_fallback", False) else parsed.get("used_model", "fallback"),
     }
     db.add(AiSuggestionLog(description=description, suggested_account_code=result["account_code"], suggested_account_name=result["account_name"], confidence=result["confidence"], rationale=result["rationale"], raw_response=result))
     db.commit()

@@ -6,6 +6,7 @@ class Settings(BaseSettings):
     app_name: str = "Accounting Web App"
     database_url: str = "sqlite:///./accounting.db"
     openai_api_key: str | None = None
+    openai_model: str = "gpt-4.1-nano"
     allowed_origins: str = "http://localhost:3000"
     sample_data_dir: str = "D:/AccountingApp"
 

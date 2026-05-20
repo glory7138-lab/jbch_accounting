@@ -161,6 +161,7 @@ class AnalysisSummary(BaseModel):
 class AiSuggestionRequest(BaseModel):
     description: str
     amount: Decimal | None = None
+    model: str | None = None
 
 
 class AiSuggestionResponse(BaseModel):
@@ -170,3 +171,4 @@ class AiSuggestionResponse(BaseModel):
     rationale: str | None = None
     candidate_accounts: list[dict] = []
     used_fallback: bool = False
+    used_model: str | None = None
