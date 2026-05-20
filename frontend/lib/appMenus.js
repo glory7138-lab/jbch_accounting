@@ -1,9 +1,9 @@
 export const offeringMenuItems = [
-  { href: '/offerings/weekly', label: '주간헌금현황', match: (pathname) => pathname.startsWith('/offerings/weekly') },
-  { href: '/offerings/cumulative', label: '주간헌금현황 누계', match: (pathname) => pathname === '/offerings/cumulative' },
-  { href: '/offerings/department-counts', label: '회별 참여자 수', match: (pathname) => pathname === '/offerings/department-counts' },
-  { href: '/offerings/department-amounts', label: '회별 참여금액', match: (pathname) => pathname === '/offerings/department-amounts' },
-  { href: '/offerings/envelopes', label: '헌금봉투 번호', match: (pathname) => pathname === '/offerings/envelopes' },
+  { href: '/offerings/weekly', label: '주간헌금현황', matchMode: 'prefix' },
+  { href: '/offerings/cumulative', label: '주간헌금현황 누계', matchMode: 'exact' },
+  { href: '/offerings/department-counts', label: '회별 참여자 수', matchMode: 'exact' },
+  { href: '/offerings/department-amounts', label: '회별 참여금액', matchMode: 'exact' },
+  { href: '/offerings/envelopes', label: '헌금봉투 번호', matchMode: 'exact' },
 ];
 
 export const ledgerMenuItems = [

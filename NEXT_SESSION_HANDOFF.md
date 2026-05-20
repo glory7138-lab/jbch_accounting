@@ -161,6 +161,16 @@ AI 추천 화면과 백엔드 추천 API에 모델 선택을 추가했음.
 - 백엔드 새 API 함수 직접 호출 확인 완료
 - 프론트 `next build` 통과 완료
 
+### 2026-05-20 직렬화 오류 수정
+새 헌금현황 메뉴를 붙인 뒤 Next.js 런타임 오류가 한 번 발생했음.
+
+- 오류 내용: `Functions cannot be passed directly to Client Components`
+- 원인: 서버 페이지에서 `match: (pathname) => ...` 형태의 함수를 포함한 메뉴 배열을 `SectionTabs` 클라이언트 컴포넌트로 전달함
+- 수정: `frontend/lib/appMenus.js`의 메뉴 정의를 함수 없는 순수 데이터(`matchMode`)로 변경
+- 수정: `frontend/components/SectionTabs.js` 내부에서 현재 pathname 기준 활성 탭 판정하도록 변경
+- 수정: `frontend/components/LedgerTabs.js`도 같은 방식으로 정리
+- 수정 후 프론트 `next build` 재확인 완료
+
 ## 5. 최근 커밋
 - `d337a7e` Align frontend API port with backend
 - `8277b1a` Convert weekly offering entry to batch grid
