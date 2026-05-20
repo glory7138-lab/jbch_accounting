@@ -42,6 +42,7 @@ class Member(Base):
     member_no: Mapped[str | None] = mapped_column(String(50), index=True)
     name: Mapped[str] = mapped_column(String(255), index=True)
     department_name: Mapped[str | None] = mapped_column(String(255))
+    district_name: Mapped[str | None] = mapped_column(String(255))
     gender_or_section: Mapped[str | None] = mapped_column(String(100))
     age_or_class: Mapped[str | None] = mapped_column(String(100))
     source_sheet: Mapped[str | None] = mapped_column(String(255))

@@ -34,6 +34,9 @@ def search_members(query: str = Query(..., min_length=1), db: Session = Depends(
                 Member.member_no.contains(keyword),
                 Member.name.contains(keyword),
                 Member.department_name.contains(keyword),
+                Member.district_name.contains(keyword),
+                Member.gender_or_section.contains(keyword),
+                Member.age_or_class.contains(keyword),
             )
         )
         .order_by(Member.name.asc(), Member.member_no.asc())
@@ -54,7 +57,17 @@ def lookup_member(memberKey: str = Query(..., min_length=1), db: Session = Depen
         return MemberLookupResponse(found=True, lookup_key=key, found_by="exact_name", member=member)
 
     member = db.scalar(
-        select(Member).where(or_(Member.name.contains(key), Member.department_name.contains(key))).order_by(Member.name.asc())
+        select(Member)
+        .where(
+            or_(
+                Member.name.contains(key),
+                Member.department_name.contains(key),
+                Member.district_name.contains(key),
+                Member.gender_or_section.contains(key),
+                Member.age_or_class.contains(key),
+            )
+        )
+        .order_by(Member.name.asc())
     )
     if member:
         return MemberLookupResponse(

@@ -283,7 +283,8 @@ def seed_reference_data(db: Session, base_dir: str | Path) -> dict[str, int]:
             columns = [str(c) for c in data.columns]
             no_col = _match_column(columns, ["번호", "no"])
             name_col = _match_column(columns, ["이름", "성명"])
-            dept_col = _match_column(columns, ["회", "부서", "구역"])
+            dept_col = _match_column(columns, ["회", "부서"])
+            district_col = _match_column(columns, ["구역"])
             age_col = _match_column(columns, ["나이", "연령", "반"])
             gender_col = _match_column(columns, ["남", "여", "성별", "구분"])
             if name_col:
@@ -294,17 +295,27 @@ def seed_reference_data(db: Session, base_dir: str | Path) -> dict[str, int]:
                     member_no = normalize(row.get(no_col)) if no_col else None
                     if not member_no:
                         continue
+
+                    member_payload = {
+                        "name": name,
+                        "department_name": normalize(row.get(dept_col)) if dept_col else None,
+                        "district_name": normalize(row.get(district_col)) if district_col else None,
+                        "gender_or_section": normalize(row.get(gender_col)) if gender_col else None,
+                        "age_or_class": normalize(row.get(age_col)) if age_col else None,
+                        "source_sheet": member_sheet,
+                    }
+
                     exists = db.scalar(select(Member).where(Member.member_no == member_no))
                     if exists:
+                        for field, value in member_payload.items():
+                            if getattr(exists, field) != value:
+                                setattr(exists, field, value)
                         continue
+
                     db.add(
                         Member(
                             member_no=member_no,
-                            name=name,
-                            department_name=normalize(row.get(dept_col)) if dept_col else None,
-                            gender_or_section=normalize(row.get(gender_col)) if gender_col else None,
-                            age_or_class=normalize(row.get(age_col)) if age_col else None,
-                            source_sheet=member_sheet,
+                            **member_payload,
                         )
                     )
                     members_created += 1

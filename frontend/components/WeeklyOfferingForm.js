@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { apiFetch } from '../lib/api';
 
 const OFFERING_FIELDS = [
@@ -18,7 +18,7 @@ const OFFERING_FIELDS = [
   { code: '23000', label: '기타수입' },
 ];
 
-const ROW_COUNT = 12;
+const ROW_COUNT = 20;
 
 function createEmptyRow(index, voucherDate) {
   return {
@@ -39,6 +39,18 @@ function money(value) {
   return new Intl.NumberFormat('ko-KR').format(Number(value || 0));
 }
 
+function memberDistrict(member) {
+  return member?.district_name || member?.gender_or_section || member?.age_or_class || '';
+}
+
+function memberSummary(member, foundBy) {
+  const parts = [member?.name, member?.department_name, memberDistrict(member)].filter(Boolean);
+  if (foundBy === 'partial_match') {
+    parts.push('부분일치');
+  }
+  return parts.join(' · ');
+}
+
 export default function WeeklyOfferingForm({ onCreated }) {
   const today = new Date().toISOString().slice(0, 10);
   const [voucherDate, setVoucherDate] = useState(today);
@@ -49,6 +61,8 @@ export default function WeeklyOfferingForm({ onCreated }) {
   const [searchLoading, setSearchLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [resultMessage, setResultMessage] = useState('');
+  const [lookupStates, setLookupStates] = useState({});
+  const lookupTimersRef = useRef({});
 
   const totalAmount = useMemo(
     () => rows.reduce((sum, row) => sum + OFFERING_FIELDS.reduce((acc, field) => acc + Number(row.offerings[field.code] || 0), 0), 0),
@@ -76,22 +90,88 @@ export default function WeeklyOfferingForm({ onCreated }) {
     );
   }
 
-  async function autoLookupEnvelope(rowId) {
-    const row = rows.find((item) => item.rowId === rowId);
-    const key = row?.envelope_no?.trim();
-    if (!key) return;
+  function setLookupState(rowId, nextState) {
+    setLookupStates((current) => ({ ...current, [rowId]: nextState }));
+  }
+
+  function applyMemberToRow(rowId, member, foundBy = 'member_no') {
+    updateRow(rowId, {
+      member_id: String(member.id),
+      envelope_no: member.member_no || '',
+      member_name: member.name || '',
+      department_name: member.department_name || '',
+      district_name: memberDistrict(member),
+    });
+    setLookupState(rowId, {
+      status: 'found',
+      message: memberSummary(member, foundBy) || '헌금자 정보 조회 완료',
+    });
+  }
+
+  async function autoLookupMember(rowId, rawQuery, foundBy = 'member_no') {
+    const query = (rawQuery || '').trim();
+
+    if (!query) {
+      if (foundBy === 'name_search') {
+        updateRow(rowId, { member_id: '', department_name: '', district_name: '' });
+      } else {
+        updateRow(rowId, { member_id: '', member_name: '', department_name: '', district_name: '' });
+      }
+      setLookupState(rowId, null);
+      return;
+    }
+
+    setLookupState(rowId, { status: 'loading', message: foundBy === 'name_search' ? '이름 조회 중...' : '봉투번호 조회 중...' });
     try {
-      const result = await apiFetch(`/accounts/member-lookup?memberKey=${encodeURIComponent(key)}`);
+      const result = await apiFetch(`/accounts/member-lookup?memberKey=${encodeURIComponent(query)}`);
       if (result.found && result.member) {
-        updateRow(rowId, {
-          member_id: String(result.member.id),
-          member_name: result.member.name || '',
-          department_name: result.member.department_name || '',
-        });
+        applyMemberToRow(rowId, result.member, result.found_by || foundBy);
+        return;
+      }
+
+      if (foundBy === 'name_search') {
+        updateRow(rowId, { member_id: '', department_name: '', district_name: '' });
+        setLookupState(rowId, { status: 'missing', message: '일치하는 이름 없음' });
+      } else {
+        updateRow(rowId, { member_id: '', member_name: '', department_name: '', district_name: '' });
+        setLookupState(rowId, { status: 'missing', message: '일치하는 봉투번호 없음' });
       }
     } catch (error) {
       console.error(error);
+      setLookupState(rowId, { status: 'missing', message: '조회 실패' });
     }
+  }
+
+  function queueLookup(rowId, value, foundBy) {
+    if (lookupTimersRef.current[rowId]) {
+      clearTimeout(lookupTimersRef.current[rowId]);
+    }
+
+    const trimmedValue = value.trim();
+    if (!trimmedValue) {
+      if (foundBy === 'name_search') {
+        updateRow(rowId, { member_id: '', department_name: '', district_name: '' });
+      } else {
+        updateRow(rowId, { member_id: '', member_name: '', department_name: '', district_name: '' });
+      }
+      setLookupState(rowId, null);
+      return;
+    }
+
+    lookupTimersRef.current[rowId] = setTimeout(() => {
+      autoLookupMember(rowId, trimmedValue, foundBy);
+      delete lookupTimersRef.current[rowId];
+    }, 300);
+  }
+
+  function handleEnvelopeChange(rowId, value) {
+    updateRow(rowId, { envelope_no: value });
+    queueLookup(rowId, value, 'member_no');
+  }
+
+  function handleMemberNameChange(rowId, value) {
+    updateRow(rowId, { member_name: value });
+    queueLookup(rowId, value, 'name_search');
   }
 
   async function handleMemberSearch() {
@@ -117,12 +197,7 @@ export default function WeeklyOfferingForm({ onCreated }) {
 
   function applyMemberToActiveRow(member) {
     if (!activeRowId) return;
-    updateRow(activeRowId, {
-      member_id: String(member.id),
-      envelope_no: member.member_no || '',
-      member_name: member.name || '',
-      department_name: member.department_name || '',
-    });
+    applyMemberToRow(activeRowId, member, 'name_search');
     setMemberSearchResults([]);
     setMemberSearchQuery('');
   }
@@ -135,9 +210,12 @@ export default function WeeklyOfferingForm({ onCreated }) {
   }
 
   function clearRows() {
+    Object.values(lookupTimersRef.current).forEach(clearTimeout);
+    lookupTimersRef.current = {};
     setRows(Array.from({ length: ROW_COUNT }, (_, index) => createEmptyRow(index, voucherDate)));
     setResultMessage('');
     setMemberSearchResults([]);
+    setLookupStates({});
   }
 
   async function handleSubmit(event) {
@@ -184,9 +262,9 @@ export default function WeeklyOfferingForm({ onCreated }) {
       <div className="section-header">
         <div>
           <h2>주간 헌금 일괄 등록</h2>
-          <p className="muted">봉투를 펼쳐놓고 엑셀처럼 한 줄씩 바로 넣는 화면이야. 여러 명을 한 번에 보고 저장할 수 있게 가로형으로 넓혔어.</p>
+          <p className="muted">봉투번호나 이름 일부만 넣어도 이름, 회별, 구역을 자동으로 채우고, 헌금 항목은 한 화면에서 다 보이게 묶었어.</p>
         </div>
-        <div className="voucher-form__badge">가로 일괄입력</div>
+        <div className="voucher-form__badge">빠른 탭 입력</div>
       </div>
 
       <div className="weekly-toolbar">
@@ -216,7 +294,10 @@ export default function WeeklyOfferingForm({ onCreated }) {
             {memberSearchResults.map((member) => (
               <button key={member.id} type="button" className="search-result-item" onClick={() => applyMemberToActiveRow(member)}>
                 <span>{member.name}</span>
-                <span className="muted">번호 {member.member_no || '-'} · {member.department_name || '소속 없음'}</span>
+                <span className="muted">
+                  번호 {member.member_no || '-'} · {member.department_name || '소속 없음'}
+                  {memberDistrict(member) ? ` · ${memberDistrict(member)}` : ''}
+                </span>
               </button>
             ))}
           </div>
@@ -225,18 +306,26 @@ export default function WeeklyOfferingForm({ onCreated }) {
 
       <div className="weekly-entry-table-wrap batch-grid-wrap">
         <table className="weekly-entry-table batch-grid-table">
+          <colgroup>
+            <col style={{ width: '88px' }} />
+            <col style={{ width: '120px' }} />
+            <col style={{ width: '72px' }} />
+            <col style={{ width: '72px' }} />
+            <col style={{ width: '56px' }} />
+            <col style={{ width: '620px' }} />
+            <col style={{ width: '160px' }} />
+            <col style={{ width: '96px' }} />
+          </colgroup>
           <thead>
             <tr>
-              <th>봉투번호</th>
+              <th>봉투</th>
               <th>이름</th>
               <th>회별</th>
               <th>구역</th>
               <th>이체</th>
-              {OFFERING_FIELDS.map((field) => (
-                <th key={field.code}>{field.label}<br /><span className="muted">({field.code})</span></th>
-              ))}
+              <th>헌금 항목</th>
               <th>비고</th>
-              <th>행 합계</th>
+              <th>합계</th>
             </tr>
           </thead>
           <tbody>
@@ -245,19 +334,34 @@ export default function WeeklyOfferingForm({ onCreated }) {
               return (
                 <tr key={row.rowId} className={activeRowId === row.rowId ? 'active-row' : ''}>
                   <td>
-                    <input
-                      value={row.envelope_no}
-                      onFocus={() => setActiveRowId(row.rowId)}
-                      onChange={(e) => updateRow(row.rowId, { envelope_no: e.target.value })}
-                      onBlur={() => autoLookupEnvelope(row.rowId)}
-                      placeholder={`${index + 1}`}
-                    />
+                    <div className="envelope-cell">
+                      <input
+                        value={row.envelope_no}
+                        onFocus={() => setActiveRowId(row.rowId)}
+                        onChange={(e) => handleEnvelopeChange(row.rowId, e.target.value)}
+                        onBlur={() => autoLookupMember(row.rowId, row.envelope_no, 'member_no')}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            autoLookupMember(row.rowId, row.envelope_no, 'member_no');
+                          }
+                        }}
+                        placeholder={`${index + 1}`}
+                      />
+                      {lookupStates[row.rowId]?.message ? (
+                        <div className={`lookup-hint lookup-hint--${lookupStates[row.rowId]?.status || 'idle'}`}>
+                          {lookupStates[row.rowId].message}
+                        </div>
+                      ) : null}
+                    </div>
                   </td>
                   <td>
                     <input
                       value={row.member_name}
                       onFocus={() => setActiveRowId(row.rowId)}
-                      onChange={(e) => updateRow(row.rowId, { member_name: e.target.value })}
+                      onChange={(e) => handleMemberNameChange(row.rowId, e.target.value)}
+                      onBlur={() => autoLookupMember(row.rowId, row.member_name, 'name_search')}
+                      placeholder="이름 일부 가능"
                     />
                   </td>
                   <td>
@@ -282,18 +386,23 @@ export default function WeeklyOfferingForm({ onCreated }) {
                       onChange={(e) => updateRow(row.rowId, { is_transfer: e.target.checked })}
                     />
                   </td>
-                  {OFFERING_FIELDS.map((field) => (
-                    <td key={field.code}>
-                      <input
-                        type="number"
-                        min="0"
-                        value={row.offerings[field.code]}
-                        onFocus={() => setActiveRowId(row.rowId)}
-                        onChange={(e) => updateOffering(row.rowId, field.code, e.target.value)}
-                        placeholder="0"
-                      />
-                    </td>
-                  ))}
+                  <td className="offerings-cell">
+                    <div className="offering-grid">
+                      {OFFERING_FIELDS.map((field) => (
+                        <label key={field.code} className="offering-input">
+                          <span>{field.label}</span>
+                          <input
+                            type="number"
+                            min="0"
+                            value={row.offerings[field.code]}
+                            onFocus={() => setActiveRowId(row.rowId)}
+                            onChange={(e) => updateOffering(row.rowId, field.code, e.target.value)}
+                            placeholder="0"
+                          />
+                        </label>
+                      ))}
+                    </div>
+                  </td>
                   <td>
                     <input
                       value={row.note}
@@ -311,7 +420,7 @@ export default function WeeklyOfferingForm({ onCreated }) {
 
       <div className="actions">
         <button type="submit" disabled={saving}>{saving ? '일괄 등록 중...' : '주간 헌금 일괄 등록'}</button>
-        <button type="button" className="secondary" onClick={() => addRows(5)}>행 5개 추가</button>
+        <button type="button" className="secondary" onClick={() => addRows(10)}>행 10개 추가</button>
         <button type="button" className="secondary" onClick={clearRows}>전체 비우기</button>
       </div>
 

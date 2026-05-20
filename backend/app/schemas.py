@@ -30,6 +30,7 @@ class MemberRead(BaseModel):
     member_no: str | None = None
     name: str
     department_name: str | None = None
+    district_name: str | None = None
     gender_or_section: str | None = None
     age_or_class: str | None = None
     source_sheet: str | None = None

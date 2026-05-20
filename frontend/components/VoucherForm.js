@@ -306,7 +306,7 @@ export default function VoucherForm({ onCreated }) {
                   onClick={() => applySelectedMember(member, 'name_search')}
                 >
                   <span>{member.name}</span>
-                  <span className="muted">번호 {member.member_no || '-'} · {member.department_name || '소속 없음'}</span>
+                  <span className="muted">번호 {member.member_no || '-'} · {member.department_name || '소속 없음'}{member.district_name ? ` · ${member.district_name}` : ''}</span>
                 </button>
               ))}
             </div>
@@ -321,7 +321,7 @@ export default function VoucherForm({ onCreated }) {
                 <div><span className="muted">번호</span><br />{memberLookup.member.member_no || '-'}</div>
                 <div><span className="muted">이름</span><br />{memberLookup.member.name}</div>
                 <div><span className="muted">회/부서</span><br />{memberLookup.member.department_name || '-'}</div>
-                <div><span className="muted">구분</span><br />{memberLookup.member.gender_or_section || '-'}</div>
+                <div><span className="muted">구역</span><br />{memberLookup.member.district_name || '-'}</div>
               </div>
             ) : (
               <div className="muted">{memberLookup.message}</div>

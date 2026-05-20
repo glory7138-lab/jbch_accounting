@@ -19,6 +19,7 @@ def init_db() -> None:
     Base.metadata.create_all(bind=engine)
     _ensure_column("accounts", "account_type", "VARCHAR(100)")
     _ensure_column("accounts", "finance_category", "VARCHAR(100)")
+    _ensure_column("members", "district_name", "VARCHAR(255)")
     _ensure_column("vouchers", "fund_name", "VARCHAR(255)")
 
 
