@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  backend:
+    build: ./backend
+    container_name: accounting_backend
+    restart: always
+    ports:
+      - "8500:8500"
+    volumes:
+      - ./backend:/app
+      - ./월말결산_SAMPLE.xlsx:/app/월말결산_SAMPLE.xlsx
+      - ./헌금현황_SAMPLE.xlsx:/app/헌금현황_SAMPLE.xlsx
+      - ./회계장부_SAMPLE2.xlsx:/app/회계장부_SAMPLE2.xlsx
+      # ★ 로컬 backend 폴더 안의 진짜 DB 파일을 컨테이너 내부 root로 직접 매핑
+      - ./backend/accounting.db:/accounting.db
+    environment:
+      - OPENAI_MODEL=gpt-4.1-nano
+      - ALLOWED_ORIGINS=http://localhost:3010
+      - SAMPLE_DATA_DIR=/app
+      # ★ 경로를 최상위 /accounting.db 로 변경하여 소스 코드가 무조건 읽을 수 있게 매핑
+      - DATABASE_URL=sqlite:////accounting.db
+
+  frontend:
+    build: ./frontend
+    container_name: accounting_frontend
+    restart: always
+    ports:
+      - "3010:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8500
+    depends_on:
+      - backend
