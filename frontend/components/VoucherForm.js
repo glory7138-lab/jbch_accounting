@@ -157,7 +157,8 @@ export default function VoucherForm({ onCreated }) {
 
     setLookupLoading(true);
     try {
-      const result = await apiFetch(`/accounts/member-lookup?memberKey=${encodeURIComponent(key)}`);
+      const year = form.voucher_date ? form.voucher_date.split('-')[0] : new Date().getFullYear();
+      const result = await apiFetch(`/accounts/member-lookup?memberKey=${encodeURIComponent(key)}&year=${year}`);
       setMemberLookup(result);
       if (result.found && result.member) {
         setForm((current) => ({
@@ -183,7 +184,8 @@ export default function VoucherForm({ onCreated }) {
     }
     setSearchLoading(true);
     try {
-      const results = await apiFetch(`/accounts/member-search?query=${encodeURIComponent(query)}`);
+      const year = form.voucher_date ? form.voucher_date.split('-')[0] : new Date().getFullYear();
+      const results = await apiFetch(`/accounts/member-search?query=${encodeURIComponent(query)}&year=${year}`);
       setMemberSearchResults(results);
     } catch (error) {
       alert(`헌금자 검색 실패: ${error.message}`);

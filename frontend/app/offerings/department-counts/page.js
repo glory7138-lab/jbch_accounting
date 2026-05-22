@@ -12,20 +12,55 @@ export default function DepartmentCountsPage() {
   const [month, setMonth] = useState('');
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
+  const [isInitialized, setIsInitialized] = useState(false);
 
   useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const savedYear = sessionStorage.getItem('dept_counts_year');
+      const savedMonth = sessionStorage.getItem('dept_counts_month');
+      if (savedYear) setYear(savedYear);
+      if (savedMonth !== null) setMonth(savedMonth);
+    }
+    setIsInitialized(true);
+  }, []);
+
+  useEffect(() => {
+    if (!isInitialized) return;
+
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('dept_counts_year', year);
+      sessionStorage.setItem('dept_counts_month', month);
+    }
+
     const query = new URLSearchParams({ year });
     if (month) query.set('month', month);
     apiFetch(`/offerings/department-summary?${query.toString()}`)
       .then(setData)
       .catch((err) => setError(err.message));
-  }, [year, month]);
+  }, [year, month, isInitialized]);
 
   const exportHref = useMemo(() => {
     const query = new URLSearchParams({ year });
     if (month) query.set('month', month);
     return `${API_BASE}/offerings/department-summary-counts.xlsx?${query.toString()}`;
   }, [year, month]);
+
+  const columnTotals = useMemo(() => {
+    if (!data || !data.rows || !data.columns) return {};
+    const sums = {};
+    data.columns.forEach((col) => {
+      sums[col.code] = 0;
+    });
+    sums['total_participants'] = 0;
+
+    data.rows.forEach((row) => {
+      data.columns.forEach((col) => {
+        sums[col.code] += Number(row.participant_counts?.[col.code] || 0);
+      });
+      sums['total_participants'] += Number(row.total_participants || 0);
+    });
+    return sums;
+  }, [data]);
 
   return (
     <div className="grid">
@@ -72,6 +107,15 @@ export default function DepartmentCountsPage() {
                 </tr>
               ))}
             </tbody>
+            <tfoot>
+              <tr style={{ fontWeight: 'bold', backgroundColor: 'var(--background-alt, #f8fafc)' }}>
+                <td>합계</td>
+                {data.columns.map((column) => (
+                  <td key={column.code}>{columnTotals[column.code]}</td>
+                ))}
+                <td><strong>{columnTotals['total_participants']}</strong></td>
+              </tr>
+            </tfoot>
           </table>
         </div>
       )}

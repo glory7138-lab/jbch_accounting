@@ -9,6 +9,7 @@ import pandas as pd
 from openpyxl import load_workbook
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+import uuid
 
 from app.models import Account, Fund, ImportBatch, Member
 
@@ -279,6 +280,10 @@ def seed_reference_data(db: Session, base_dir: str | Path) -> dict[str, int]:
         excel = pd.ExcelFile(cash_workbook)
         member_sheet = _find_sheet_name(excel.sheet_names, MEMBER_SHEET_CANDIDATES)
         if member_sheet:
+            # 시트명에서 연도 숫자 파싱 (예: "헌금 봉투 번호 (2026)" -> 2026)
+            year_match = re.search(r"\d{4}", member_sheet)
+            sheet_year = int(year_match.group(0)) if year_match else 2026
+
             data, _ = load_sheet_frame(cash_workbook, member_sheet)
             columns = [str(c) for c in data.columns]
             no_col = _match_column(columns, ["번호", "no"])
@@ -296,6 +301,18 @@ def seed_reference_data(db: Session, base_dir: str | Path) -> dict[str, int]:
                     if not member_no:
                         continue
 
+                    # 이름이 같은 기존 성도의 person_id 조회
+                    existing_person_id = db.scalar(
+                        select(Member.person_id)
+                        .where(Member.name == name)
+                        .limit(1)
+                    )
+                    
+                    if existing_person_id:
+                        person_id = existing_person_id
+                    else:
+                        person_id = f"P-{uuid.uuid4().hex[:8].upper()}"
+
                     member_payload = {
                         "name": name,
                         "department_name": normalize(row.get(dept_col)) if dept_col else None,
@@ -305,8 +322,14 @@ def seed_reference_data(db: Session, base_dir: str | Path) -> dict[str, int]:
                         "source_sheet": member_sheet,
                     }
 
-                    exists = db.scalar(select(Member).where(Member.member_no == member_no))
+                    # 해당 연도에 이 봉투번호를 사용하는 멤버가 있는지 확인
+                    exists = db.scalar(
+                        select(Member)
+                        .where(Member.year == sheet_year, Member.member_no == member_no)
+                    )
                     if exists:
+                        # 해당 연도 레코드 업데이트
+                        exists.person_id = person_id
                         for field, value in member_payload.items():
                             if getattr(exists, field) != value:
                                 setattr(exists, field, value)
@@ -314,6 +337,8 @@ def seed_reference_data(db: Session, base_dir: str | Path) -> dict[str, int]:
 
                     db.add(
                         Member(
+                            person_id=person_id,
+                            year=sheet_year,
                             member_no=member_no,
                             **member_payload,
                         )

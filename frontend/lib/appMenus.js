@@ -4,6 +4,7 @@ export const offeringMenuItems = [
   { href: '/offerings/department-counts', label: '회별 참여자 수', matchMode: 'exact' },
   { href: '/offerings/department-amounts', label: '회별 참여금액', matchMode: 'exact' },
   { href: '/offerings/envelopes', label: '헌금봉투 번호', matchMode: 'exact' },
+  { href: '/offerings/individual', label: '개인별 헌금 내역', matchMode: 'exact' },
 ];
 
 export const ledgerMenuItems = [
@@ -17,4 +18,10 @@ export const ledgerMenuItems = [
   { slug: 'overseas', label: '해외후원', name: '해외후원' },
   { slug: 'domestic-mission', label: '국내선교', name: '국내선교' },
   { slug: 'account-codes', label: '계정코드', name: '계정코드' },
+];
+
+export const settlementMenuItems = [
+  { href: '/settlement/form', label: '결산양식', matchMode: 'exact' },
+  { href: '/settlement/participation', label: '참여현황 및 주요관리항목 지출', matchMode: 'exact' },
+  { href: '/settlement/weekly-report', label: '주간보고자료', matchMode: 'exact' },
 ];

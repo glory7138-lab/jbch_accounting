@@ -290,6 +290,21 @@ def update_account_code(account_id: int, payload: AccountCodePayload, db: Sessio
     return {"id": account.id, **payload.model_dump()}
 
 
+@router.delete("/account-codes/{account_id}")
+def delete_account_code(account_id: int, db: Session = Depends(get_db)):
+    account = db.get(Account, account_id)
+    if not account:
+        raise HTTPException(status_code=404, detail="회계코드를 찾지 못했습니다.")
+    # Check if used in vouchers
+    in_use = db.scalar(select(Voucher).where(Voucher.account_id == account_id))
+    if in_use:
+        raise HTTPException(status_code=400, detail="이미 전표에 사용 중인 계정코드입니다. 삭제할 수 없습니다.")
+    db.delete(account)
+    db.commit()
+    return {"message": "삭제 완료"}
+
+
+
 @router.post("/account-codes/upload")
 async def upload_account_codes(file: UploadFile = File(...), db: Session = Depends(get_db)):
     content = await file.read()

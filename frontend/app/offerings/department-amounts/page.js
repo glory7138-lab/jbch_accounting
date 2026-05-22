@@ -16,20 +16,55 @@ export default function DepartmentAmountsPage() {
   const [month, setMonth] = useState('');
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
+  const [isInitialized, setIsInitialized] = useState(false);
 
   useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const savedYear = sessionStorage.getItem('dept_amounts_year');
+      const savedMonth = sessionStorage.getItem('dept_amounts_month');
+      if (savedYear) setYear(savedYear);
+      if (savedMonth !== null) setMonth(savedMonth);
+    }
+    setIsInitialized(true);
+  }, []);
+
+  useEffect(() => {
+    if (!isInitialized) return;
+
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('dept_amounts_year', year);
+      sessionStorage.setItem('dept_amounts_month', month);
+    }
+
     const query = new URLSearchParams({ year });
     if (month) query.set('month', month);
     apiFetch(`/offerings/department-summary?${query.toString()}`)
       .then(setData)
       .catch((err) => setError(err.message));
-  }, [year, month]);
+  }, [year, month, isInitialized]);
 
   const exportHref = useMemo(() => {
     const query = new URLSearchParams({ year });
     if (month) query.set('month', month);
     return `${API_BASE}/offerings/department-summary-amounts.xlsx?${query.toString()}`;
   }, [year, month]);
+
+  const columnTotals = useMemo(() => {
+    if (!data || !data.rows || !data.columns) return {};
+    const sums = {};
+    data.columns.forEach((col) => {
+      sums[col.code] = 0;
+    });
+    sums['total_amount'] = 0;
+
+    data.rows.forEach((row) => {
+      data.columns.forEach((col) => {
+        sums[col.code] += Number(row.amounts?.[col.code] || 0);
+      });
+      sums['total_amount'] += Number(row.total_amount || 0);
+    });
+    return sums;
+  }, [data]);
 
   return (
     <div className="grid">
@@ -76,6 +111,15 @@ export default function DepartmentAmountsPage() {
                 </tr>
               ))}
             </tbody>
+            <tfoot>
+              <tr style={{ fontWeight: 'bold', backgroundColor: 'var(--background-alt, #f8fafc)' }}>
+                <td>합계</td>
+                {data.columns.map((column) => (
+                  <td key={column.code}>{money(columnTotals[column.code])}</td>
+                ))}
+                <td><strong>{money(columnTotals['total_amount'])}</strong></td>
+              </tr>
+            </tfoot>
           </table>
         </div>
       )}

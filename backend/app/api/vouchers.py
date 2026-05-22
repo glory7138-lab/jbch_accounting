@@ -111,6 +111,35 @@ def _account_display(account: Account) -> str:
     return account.report_category or account.name or account.code
 
 
+def _resolve_member_for_year(db: Session, member_id: int | None, target_year: int) -> int | None:
+    if not member_id:
+        return None
+    raw_member = db.get(Member, member_id)
+    if not raw_member:
+        return None
+    if raw_member.year == target_year:
+        return raw_member.id
+
+    # 연도가 다른 경우, 해당 성도의 person_id를 바탕으로 전표 연도의 Member를 찾음
+    corrected = db.scalar(
+        select(Member)
+        .where(Member.person_id == raw_member.person_id, Member.year == target_year)
+    )
+    if corrected:
+        return corrected.id
+
+    # 이름 기반으로 전표 연도의 Member가 있는지 확인
+    corrected_by_name = db.scalar(
+        select(Member)
+        .where(Member.name == raw_member.name, Member.year == target_year)
+    )
+    if corrected_by_name:
+        return corrected_by_name.id
+
+    return None
+
+
+
 def _compose_weekly_note(payload: WeeklyOfferingCreate) -> str | None:
     parts = []
     if payload.envelope_no:
@@ -154,7 +183,9 @@ def _parse_weekly_note(note: str | None) -> dict:
 
 
 def _create_weekly_vouchers(payload: WeeklyOfferingCreate, db: Session) -> tuple[list[Voucher], Decimal, Decimal]:
-    member = db.get(Member, payload.member_id) if payload.member_id else None
+    resolved_member_id = _resolve_member_for_year(db, payload.member_id, payload.voucher_date.year)
+    member = db.get(Member, resolved_member_id) if resolved_member_id else None
+
     counterparty = (member.name if member else payload.member_name) or None
     note = _compose_weekly_note(payload)
 
@@ -182,7 +213,7 @@ def _create_weekly_vouchers(payload: WeeklyOfferingCreate, db: Session) -> tuple
             fund_id=resolved_fund_id,
             fund_name=resolved_fund_name,
             account_id=account.id,
-            member_id=member.id if member else payload.member_id,
+            member_id=resolved_member_id,
             counterparty=counterparty,
             note=note,
             source_workbook=WEEKLY_SOURCE_WORKBOOK,
@@ -396,6 +427,7 @@ def get_voucher(voucher_id: int, db: Session = Depends(get_db)):
 @router.post("", response_model=VoucherRead)
 def create_voucher(payload: VoucherCreate, db: Session = Depends(get_db)):
     resolved_fund_id, resolved_fund_name = _resolve_fund(db, payload.fund_id, payload.fund_name)
+    resolved_member_id = _resolve_member_for_year(db, payload.member_id, payload.voucher_date.year)
     voucher = Voucher(
         voucher_no=_build_voucher_no(),
         voucher_date=payload.voucher_date,
@@ -405,7 +437,7 @@ def create_voucher(payload: VoucherCreate, db: Session = Depends(get_db)):
         fund_id=resolved_fund_id,
         fund_name=resolved_fund_name,
         account_id=payload.account_id,
-        member_id=payload.member_id,
+        member_id=resolved_member_id,
         counterparty=payload.counterparty,
         note=payload.note,
         source_workbook=payload.source_workbook,
@@ -434,6 +466,12 @@ def update_voucher(voucher_id: int, payload: VoucherUpdate, db: Session = Depend
     if not voucher:
         raise HTTPException(status_code=404, detail="Voucher not found")
     update_data = payload.model_dump(exclude_unset=True)
+
+    if "voucher_date" in update_data or "member_id" in update_data:
+        final_date = update_data.get("voucher_date", voucher.voucher_date)
+        target_year = final_date.year if hasattr(final_date, "year") else int(str(final_date).split("-")[0])
+        member_id_to_resolve = update_data.get("member_id", voucher.member_id)
+        update_data["member_id"] = _resolve_member_for_year(db, member_id_to_resolve, target_year)
 
     if "fund_id" in update_data or "fund_name" in update_data:
         resolved_fund_id, resolved_fund_name = _resolve_fund(

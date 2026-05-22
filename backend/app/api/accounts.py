@@ -1,3 +1,4 @@
+from datetime import date
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
@@ -20,16 +21,21 @@ def list_funds(db: Session = Depends(get_db)):
 
 
 @router.get("/members", response_model=list[MemberRead])
-def list_members(db: Session = Depends(get_db)):
-    return db.scalars(select(Member).order_by(Member.name.asc()).limit(500)).all()
+def list_members(year: int | None = Query(default=None), db: Session = Depends(get_db)):
+    if year is None:
+        year = date.today().year
+    return db.scalars(select(Member).where(Member.year == year).order_by(Member.name.asc()).limit(500)).all()
 
 
 @router.get("/member-search", response_model=list[MemberRead])
-def search_members(query: str = Query(..., min_length=1), db: Session = Depends(get_db)):
+def search_members(query: str = Query(..., min_length=1), year: int | None = Query(default=None), db: Session = Depends(get_db)):
+    if year is None:
+        year = date.today().year
     keyword = query.strip()
     statement = (
         select(Member)
         .where(
+            Member.year == year,
             or_(
                 Member.member_no.contains(keyword),
                 Member.name.contains(keyword),
@@ -46,19 +52,22 @@ def search_members(query: str = Query(..., min_length=1), db: Session = Depends(
 
 
 @router.get("/member-lookup", response_model=MemberLookupResponse)
-def lookup_member(memberKey: str = Query(..., min_length=1), db: Session = Depends(get_db)):
+def lookup_member(memberKey: str = Query(..., min_length=1), year: int | None = Query(default=None), db: Session = Depends(get_db)):
+    if year is None:
+        year = date.today().year
     key = memberKey.strip()
-    member = db.scalar(select(Member).where(Member.member_no == key))
+    member = db.scalar(select(Member).where(Member.year == year, Member.member_no == key))
     if member:
         return MemberLookupResponse(found=True, lookup_key=key, found_by="member_no", member=member)
 
-    member = db.scalar(select(Member).where(Member.name == key))
+    member = db.scalar(select(Member).where(Member.year == year, Member.name == key))
     if member:
         return MemberLookupResponse(found=True, lookup_key=key, found_by="exact_name", member=member)
 
     member = db.scalar(
         select(Member)
         .where(
+            Member.year == year,
             or_(
                 Member.name.contains(key),
                 Member.department_name.contains(key),

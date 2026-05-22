@@ -37,14 +37,21 @@ class Account(Base):
 
 class Member(Base):
     __tablename__ = "members"
+    __table_args__ = (
+        UniqueConstraint("year", "member_no", name="uq_member_year_member_no"),
+        UniqueConstraint("year", "person_id", name="uq_member_year_person_id"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    person_id: Mapped[str] = mapped_column(String(50), index=True)
+    year: Mapped[int] = mapped_column(Integer, index=True)
     member_no: Mapped[str | None] = mapped_column(String(50), index=True)
     name: Mapped[str] = mapped_column(String(255), index=True)
     department_name: Mapped[str | None] = mapped_column(String(255))
     district_name: Mapped[str | None] = mapped_column(String(255))
     gender_or_section: Mapped[str | None] = mapped_column(String(100))
     age_or_class: Mapped[str | None] = mapped_column(String(100))
+    salvation_date: Mapped[str | None] = mapped_column(String(50))
     source_sheet: Mapped[str | None] = mapped_column(String(255))
 
 

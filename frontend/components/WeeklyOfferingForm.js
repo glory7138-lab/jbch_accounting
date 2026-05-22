@@ -171,7 +171,8 @@ export default function WeeklyOfferingForm({ voucherDate }) {
 
     setLookupState(rowId, { status: 'loading', message: foundBy === 'name_search' ? '이름 조회 중...' : '봉투번호 조회 중...' });
     try {
-      const result = await apiFetch(`/accounts/member-lookup?memberKey=${encodeURIComponent(query)}`);
+      const year = voucherDate ? voucherDate.split('-')[0] : new Date().getFullYear();
+      const result = await apiFetch(`/accounts/member-lookup?memberKey=${encodeURIComponent(query)}&year=${year}`);
       if (result.found && result.member) {
         applyMemberToRow(rowId, result.member, result.found_by || foundBy);
         return;
@@ -315,6 +316,9 @@ export default function WeeklyOfferingForm({ voucherDate }) {
 
   useEffect(() => {
     loadSheet(voucherDate);
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('last_weekly_date', voucherDate);
+    }
   }, [voucherDate]);
 
   if (loading) {

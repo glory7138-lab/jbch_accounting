@@ -16,20 +16,57 @@ export default function OfferingCumulativePage() {
   const [month, setMonth] = useState('');
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
+  const [isInitialized, setIsInitialized] = useState(false);
 
   useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const savedYear = sessionStorage.getItem('cumulative_year');
+      const savedMonth = sessionStorage.getItem('cumulative_month');
+      if (savedYear) setYear(savedYear);
+      if (savedMonth !== null) setMonth(savedMonth);
+    }
+    setIsInitialized(true);
+  }, []);
+
+  useEffect(() => {
+    if (!isInitialized) return;
+
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('cumulative_year', year);
+      sessionStorage.setItem('cumulative_month', month);
+    }
+
     const query = new URLSearchParams({ year });
     if (month) query.set('month', month);
     apiFetch(`/offerings/weekly-cumulative?${query.toString()}`)
       .then(setData)
       .catch((err) => setError(err.message));
-  }, [year, month]);
+  }, [year, month, isInitialized]);
 
   const exportHref = useMemo(() => {
     const query = new URLSearchParams({ year });
     if (month) query.set('month', month);
     return `${API_BASE}/offerings/weekly-cumulative.xlsx?${query.toString()}`;
   }, [year, month]);
+
+  const totals = useMemo(() => {
+    if (!data || !data.rows) return {};
+    const keys = ['11000', '11200', '12100', '13000', '11300', '12000', '12200', '14000', 'row_total'];
+    const sums = {};
+    keys.forEach((k) => {
+      sums[k] = 0;
+    });
+    data.rows.forEach((row) => {
+      keys.forEach((k) => {
+        if (k === 'row_total') {
+          sums[k] += Number(row.row_total || 0);
+        } else {
+          sums[k] += Number(row.offerings?.[k] || 0);
+        }
+      });
+    });
+    return sums;
+  }, [data]);
 
   return (
     <div className="grid">
@@ -107,6 +144,20 @@ export default function OfferingCumulativePage() {
                   </tr>
                 ))}
               </tbody>
+              <tfoot>
+                <tr style={{ fontWeight: 'bold', backgroundColor: 'var(--background-alt, #f8fafc)' }}>
+                  <td colSpan="5" style={{ textAlign: 'center' }}>합계</td>
+                  <td>{money(totals['11000'])}</td>
+                  <td>{money(totals['11200'])}</td>
+                  <td>{money(totals['12100'])}</td>
+                  <td>{money(totals['13000'])}</td>
+                  <td>{money(totals['11300'])}</td>
+                  <td>{money(totals['12000'])}</td>
+                  <td>{money(totals['12200'])}</td>
+                  <td>{money(totals['14000'])}</td>
+                  <td><strong>{money(totals['row_total'])}</strong></td>
+                </tr>
+              </tfoot>
             </table>
           </div>
         </>

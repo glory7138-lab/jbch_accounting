@@ -7,6 +7,7 @@ const items = [
   { href: '/', label: '대시보드', match: (pathname) => pathname === '/' },
   { href: '/offerings', label: '헌금현황', match: (pathname) => pathname.startsWith('/offerings') },
   { href: '/ledger', label: '회계장부', match: (pathname) => pathname.startsWith('/ledger') },
+  { href: '/settlement', label: '월말결산', match: (pathname) => pathname.startsWith('/settlement') },
   { href: '/vouchers/manual', label: '전표입력', match: (pathname) => pathname === '/vouchers/manual' },
   { href: '/ai', label: 'AI 분류', match: (pathname) => pathname === '/ai' },
   { href: '/imports', label: '엑셀 분석/가져오기', match: (pathname) => pathname === '/imports' },

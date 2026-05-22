@@ -192,3 +192,46 @@ class AiSuggestionResponse(BaseModel):
     candidate_accounts: list[dict] = []
     used_fallback: bool = False
     used_model: str | None = None
+
+
+class OfferingTrendItem(BaseModel):
+    period: str
+    amounts: dict[str, Decimal]
+    participant_counts: dict[str, int]
+    total_amount: Decimal
+    total_participants: int
+    total_count: int
+
+
+class OfferingAccountSummary(BaseModel):
+    account_id: int
+    account_name: str
+    total_amount: Decimal
+    total_count: int
+    percentage: float
+
+
+class OfferingDepartmentSummary(BaseModel):
+    department_name: str
+    total_amount: Decimal
+    total_count: int
+    percentage: float
+
+
+class OfferingAmountRangeItem(BaseModel):
+    range_label: str
+    total_count: int
+    total_amount: Decimal
+
+
+class OfferingDashboardSummary(BaseModel):
+    total_amount: Decimal
+    total_count: int
+    unique_participants: int
+    average_amount_per_person: Decimal
+    by_account: list[OfferingAccountSummary]
+    by_department: list[OfferingDepartmentSummary]
+    monthly_trends: list[OfferingTrendItem]
+    yearly_trends: list[OfferingTrendItem]
+    by_amount_range: list[OfferingAmountRangeItem]
+
