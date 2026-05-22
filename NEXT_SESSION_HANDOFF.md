@@ -31,9 +31,21 @@
   * Next.js 빌드 시 린트 에러나 문법 누락 없이 최종 프로덕션 번들에 빌드가 완료되었음을 검증했습니다 (`/ledger/account-codes`, `/settlement` 산하 페이지 전체).
   * `test_settlement_service.py` 실행을 통해 결산양식, 참여현황, 주간보고자료의 데이터 추출 로직의 모든 계산식이 완벽하게 검증되었습니다.
 
+* **테스트 하네스 및 최적화 설정 구축 완료**:
+  * **백엔드 테스트 하네스 (`pytest`)**: `pytest`, `pytest-asyncio`, `httpx` 의존성을 구성하고, [conftest.py](file:///d:/AccountingApp/backend/tests/conftest.py)에서 Excel DB seeding 로직을 Mocking하여 테스트 실행 시간을 단축했습니다 (32초 -> 1.6초). API 통합 테스트 코드를 구축하여 8개 케이스의 100% 통과를 확인했습니다.
+  * **프론트엔드 최적화 및 정적 분석**: [next.config.mjs](file:///d:/AccountingApp/frontend/next.config.mjs), [.eslintrc.json](file:///d:/AccountingApp/frontend/.eslintrc.json), [.prettierrc](file:///d:/AccountingApp/frontend/.prettierrc)를 작성해 프로덕션 렌더링 최적화, 린팅 규칙 및 스타일 포맷을 일원화했습니다.
+
+* **주간 헌금 일괄 등록 편의성 개선 및 합계 버그 수정 완료**:
+  * **천 단위 쉼표 포맷팅**: 주간 헌금 일괄 등록 시 금액 입력 창에 실시간 천 단위 쉼표가 붙도록 금액 필드 형식을 조정하고 `formatWithCommas` 포맷터를 적용했습니다.
+  * **헌금 합계 불일치 버그 해결**: 소수점(`.00`) 형식의 문자열 금액이 로드될 때 정규식에 의해 소수점이 지워져 금액이 100배로 커져 노출되던 화면 버그를 소수점 기준 왼쪽 정수부만 슬라이싱(`split('.')[0]`)하고 파싱하도록 보완하여 완벽하게 고쳤습니다.
+
+* **어플리케이션 원클릭 구동 배치 파일 생성 완료**:
+  * 백엔드(FastAPI) 및 프론트엔드(Next.js) 서버를 로컬 PC에서 한 번에 띄울 수 있는 원클릭 구동 파일인 [run.bat](file:///d:/AccountingApp/run.bat)을 프로젝트 루트에 작성해 제공했습니다.
+
 ---
 
 ## 2. 미해결 과제 및 다음 단계
 * **헌금 통계 분석 개선 (계정명 중복 시 서브 이름 표시)**:
   * 요청 사항: "헌금 통계 분석 화면에 헌금 종류 제목이 동일하면... 이 헌금들의 서브 이름도 같이 나오게 해줘"
   * 현재 대분류명만 노출되고 있으나, 중분류/세부계정항목 정보를 함께 제공하도록 수정해야 함.
+
