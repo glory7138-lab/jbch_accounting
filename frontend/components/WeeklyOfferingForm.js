@@ -40,6 +40,17 @@ function money(value) {
   return new Intl.NumberFormat('ko-KR').format(Number(value || 0));
 }
 
+function formatWithCommas(val) {
+  if (val === undefined || val === null || val === '') return '';
+  let clean = String(val).replace(/,/g, '');
+  if (clean.includes('.')) {
+    clean = clean.split('.')[0];
+  }
+  clean = clean.replace(/[^0-9]/g, '');
+  if (!clean) return '';
+  return new Intl.NumberFormat('ko-KR').format(Number(clean));
+}
+
 function memberDistrict(member) {
   return member?.district_name || member?.gender_or_section || member?.age_or_class || '';
 }
@@ -121,12 +132,13 @@ export default function WeeklyOfferingForm({ voucherDate }) {
   }
 
   function updateOffering(rowId, code, value) {
+    const rawValue = value.replace(/[^0-9]/g, '');
     setRows((current) =>
       current.map((row) =>
         row.rowId === rowId
           ? {
               ...row,
-              offerings: { ...row.offerings, [code]: value },
+              offerings: { ...row.offerings, [code]: rawValue },
             }
           : row,
       ),
@@ -424,9 +436,9 @@ export default function WeeklyOfferingForm({ voucherDate }) {
                         <label key={field.code} className="offering-input">
                           <span>{field.label}</span>
                           <input
-                            type="number"
-                            min="0"
-                            value={row.offerings[field.code]}
+                            type="text"
+                            inputMode="numeric"
+                            value={formatWithCommas(row.offerings[field.code])}
                             onFocus={() => handleRowFocus(row.rowId)}
                             onChange={(e) => updateOffering(row.rowId, field.code, e.target.value)}
                             placeholder="0"
