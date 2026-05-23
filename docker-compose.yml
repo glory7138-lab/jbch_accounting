@@ -8,15 +8,17 @@ services:
     ports:
       - "8500:8500"
     volumes:
+      # 🔄 백엔드 소스 코드 실시간 자동 반영 규칙
       - ./backend:/app
-      # ★ 로컬 backend 폴더 안의 진짜 DB 파일을 컨테이너 내부 root로 직접 매핑
-      - ./backend/accounting.db:/accounting.db
+      # 💾 진짜 DB 파일 위치 강제 고정
+      - ./backend/accounting.db:/app/accounting.db
     environment:
       - OPENAI_MODEL=gpt-4.1-nano
       - ALLOWED_ORIGINS=http://localhost:3010
-      - SAMPLE_DATA_DIR=/app
-      # ★ 경로를 최상위 /accounting.db 로 변경하여 소스 코드가 무조건 읽을 수 있게 매핑
-      - DATABASE_URL=sqlite:////accounting.db
+      # 🛡️ 백엔드가 크래시(Crash) 나지 않도록 안전하게 빈 폴더 지정
+      - SAMPLE_DATA_DIR=/tmp
+      - DATABASE_URL=sqlite:///accounting.db
+      - DB_PATH=/app/accounting.db
 
   frontend:
     build: ./frontend
@@ -25,9 +27,11 @@ services:
     ports:
       - "3010:3000"
     volumes:
-      # ★ 프론트엔드도 로컬 폴더와 컨테이너 내부를 실시간 동기화(node_modules는 제외하여 꼬임 방지)
+      # 🔄 프론트엔드 소스 코드 실시간 자동 반영 규칙 (Next.js 화면 수정 즉시 반영)
       - ./frontend:/app
+      # 윈도우와 리눅스 간의 라이브러리 충돌 방지 치트키 규칙
       - /app/node_modules
+      - /app/.next
     environment:
       - NEXT_PUBLIC_API_URL=http://localhost:8500
     depends_on:
