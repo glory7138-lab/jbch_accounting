@@ -10,3 +10,7 @@ analysis_report.json
 backend/.env
 frontend/.env.local
 ~$*.xlsx
+
+# 교회의 실제 재정 데이터가 담긴 엑셀 파일 전면 제외
+*.xlsx
+*.xls
