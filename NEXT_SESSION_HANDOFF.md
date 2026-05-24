@@ -46,6 +46,11 @@
 
 ## 2. 미해결 과제 및 다음 단계
 * **헌금 통계 분석 개선 (계정명 중복 시 서브 이름 표시)**:
-  * 요청 사항: "헌금 통계 분석 화면에 헌금 종류 제목이 동일하면... 이 헌금들의 서브 이름도 같이 나오게 해줘"
+  * 요청 사항: "헌금 통계 분석 화면에 헌금 종류 제목이 제목이 동일하면... 이 헌금들의 서브 이름도 같이 나오게 해줘"
   * 현재 대분류명만 노출되고 있으나, 중분류/세부계정항목 정보를 함께 제공하도록 수정해야 함.
+
+* **도커(Docker) 이관 시 API 통신 및 CORS 버그 수정 완료**:
+  * **동적 호스트 주소 바인딩**: 프론트엔드가 Next.js 클라이언트 사이드 빌드 타임 환경변수(`NEXT_PUBLIC_API_BASE_URL`)에 고정되어 있어 NAS로 이관 시 브라우저가 사용자 로컬 PC의 localhost로 API 요청을 보내던 버그가 있었습니다. [api.js](file:///d:/AccountingApp/frontend/lib/api.js)에서 환경변수가 없을 경우 `window.location.hostname`과 포트 `8500`을 사용해 자동으로 접속 중인 도메인으로 API를 조회하도록 개선했습니다.
+  * **CORS 허용 오리진 추가**: [docker-compose.yml](file:///d:/AccountingApp/docker-compose.yml)의 `ALLOWED_ORIGINS` 환경변수에 실서버 주소인 `http://jbchow.com:3010`을 추가하여 크로스 오리진 요청이 안전하게 수락되도록 구성하고, 환경변수 이름을 `NEXT_PUBLIC_API_URL`에서 실제 적용명인 `NEXT_PUBLIC_API_BASE_URL`로 일치시켰습니다.
+
 
