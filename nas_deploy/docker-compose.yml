@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  backend:
+    image: accountingapp-backend
+    container_name: accounting_backend
+    restart: always
+    ports:
+      - "8500:8500"
+    volumes:
+      # NAS의 실제 DB 파일 위치 (변경 금지)
+      - ./accounting.db:/app/accounting.db
+    environment:
+      - OPENAI_MODEL=gpt-4.1-nano
+      - ALLOWED_ORIGINS=http://jbchcw.com:3010,http://localhost:3010
+      - DATABASE_URL=sqlite:///accounting.db
+      - DB_PATH=/app/accounting.db
+      - SAMPLE_DATA_DIR=/tmp
+      - TZ=Asia/Seoul
+
+  frontend:
+    image: accountingapp-frontend
+    container_name: accounting_frontend
+    restart: always
+    ports:
+      - "3010:3000"
+    environment:
+      - NEXT_PUBLIC_API_BASE_URL=http://jbchcw.com:8500/api
+      - TZ=Asia/Seoul
+    depends_on:
+      - backend

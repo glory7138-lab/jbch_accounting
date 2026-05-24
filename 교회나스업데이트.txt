@@ -1,0 +1,29 @@
+로컬 도커 서비스가 교회 NAS에서도 드디어 잘 구동된다니 정말 기쁩니다! 😊
+
+앞으로 로컬 PC에서 소스코드가 수정되어 **교회 NAS에 반영(업데이트)해야 할 때**의 작업 절차를 정리해 드립니다.
+
+---
+
+### 🔄 앞으로 로컬 수정본 NAS에 반영하는 순서
+
+DB 파일(`accounting.db`)은 NAS에 저장된 것을 계속 유지하므로, **Docker 이미지만 빌드해서 올려주시면 됩니다.**
+
+#### 1단계: 로컬 PC에서 빌드 스크립트 실행
+1. 로컬에서 코드 수정을 완료합니다.
+2. `D:\AccountingApp\build_for_nas.bat` 파일을 더블클릭해 실행합니다.
+3. 빌드가 끝나면 `D:\AccountingApp\nas_deploy\accountingapp_images.tar` 파일이 최신 코드로 갱신됩니다.
+
+#### 2단계: NAS에 파일 업로드 (File Station)
+1. Synology `File Station`을 열어 `/volume1/docker/AccountingApp/` 폴더로 이동합니다.
+2. 새로 만들어진 **`accountingapp_images.tar` 파일만** 다시 업로드(덮어쓰기)합니다.
+   - *주의: `accounting.db`는 절대 다시 올리지 마세요! 기존에 입력된 데이터가 초기화됩니다.*
+   - *`docker-compose.yml`도 구조적인 변경(포트 등)이 없다면 다시 올릴 필요가 없습니다.*
+
+#### 3단계: Container Manager에서 이미지 갱신 및 서비스 재시작
+1. `Container Manager` -> **프로젝트**에서 `accountingapp` 서비스를 **중지**합니다.
+2. **이미지** 탭 -> **추가** -> **파일에서 가져오기**를 통해 방금 업로드한 `accountingapp_images.tar` 파일을 가져옵니다 (기존 이미지가 최신 버전으로 업데이트됩니다).
+3. **프로젝트** 탭 -> `accountingapp` 선택 후 **시작**을 눌러 서비스를 다시 켭니다.
+
+---
+
+혹시 나중에 업데이트를 하실 때 명령어로 자동화하고 싶으시거나 막히는 부분이 생기면 언제든 말씀해 주세요! 고생 많으셨습니다. 👍

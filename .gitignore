@@ -15,3 +15,7 @@ frontend/.env.local
 *.xlsx
 *.xls
 *.zip
+# 대용량 파일 제외
+*.tar
+*.tar.gz
+nas_deploy/*.tar
