@@ -3,16 +3,16 @@
 import { useEffect, useMemo, useState } from 'react';
 import ExportButtons from '../../../components/ExportButtons';
 import SectionTabs from '../../../components/SectionTabs';
-import { apiFetch, API_BASE } from '../../../lib/api';
+import { apiFetch, API_BASE, formatMoney } from '../../../lib/api';
 import { offeringMenuItems } from '../../../lib/appMenus';
+import { useYear } from '../../../lib/YearContext';
 
 function money(value) {
-  return new Intl.NumberFormat('ko-KR').format(Number(value || 0));
+  return formatMoney(value);
 }
 
 export default function DepartmentAmountsPage() {
-  const today = new Date();
-  const [year, setYear] = useState(String(today.getFullYear()));
+  const { year, setYear } = useYear();
   const [month, setMonth] = useState('');
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
@@ -20,20 +20,24 @@ export default function DepartmentAmountsPage() {
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const savedYear = sessionStorage.getItem('dept_amounts_year');
       const savedMonth = sessionStorage.getItem('dept_amounts_month');
-      if (savedYear) setYear(savedYear);
       if (savedMonth !== null) setMonth(savedMonth);
     }
     setIsInitialized(true);
   }, []);
 
   useEffect(() => {
-    if (!isInitialized) return;
+    if (!isInitialized || !year) return;
 
     if (typeof window !== 'undefined') {
-      sessionStorage.setItem('dept_amounts_year', year);
       sessionStorage.setItem('dept_amounts_month', month);
+    }
+
+    setError('');
+
+    const yearNum = Number(year);
+    if (isNaN(yearNum) || yearNum < 2000 || yearNum > 2100 || year.length < 4) {
+      return;
     }
 
     const query = new URLSearchParams({ year });
@@ -44,6 +48,10 @@ export default function DepartmentAmountsPage() {
   }, [year, month, isInitialized]);
 
   const exportHref = useMemo(() => {
+    const yearNum = Number(year);
+    if (!year || isNaN(yearNum) || yearNum < 2000 || yearNum > 2100 || year.length < 4) {
+      return '#';
+    }
     const query = new URLSearchParams({ year });
     if (month) query.set('month', month);
     return `${API_BASE}/offerings/department-summary-amounts.xlsx?${query.toString()}`;
@@ -78,10 +86,6 @@ export default function DepartmentAmountsPage() {
       </div>
       <div className="card form-grid">
         <label>
-          년도
-          <input value={year} onChange={(e) => setYear(e.target.value)} />
-        </label>
-        <label>
           월
           <select value={month} onChange={(e) => setMonth(e.target.value)}>
             <option value="">전체</option>
@@ -98,16 +102,16 @@ export default function DepartmentAmountsPage() {
             <thead>
               <tr>
                 <th>회별</th>
-                {data.columns.map((column) => <th key={column.code}>{column.label}</th>)}
-                <th>전체 금액</th>
+                {data.columns.map((column) => <th key={column.code} className="text-right">{column.label}</th>)}
+                <th className="text-right">전체 금액</th>
               </tr>
             </thead>
             <tbody>
               {data.rows.map((row) => (
                 <tr key={row.department_name}>
                   <td>{row.department_name}</td>
-                  {data.columns.map((column) => <td key={column.code}>{money(row.amounts[column.code])}</td>)}
-                  <td><strong>{money(row.total_amount)}</strong></td>
+                  {data.columns.map((column) => <td key={column.code} className="text-right">{money(row.amounts[column.code])}</td>)}
+                  <td className="text-right"><strong>{money(row.total_amount)}</strong></td>
                 </tr>
               ))}
             </tbody>
@@ -115,9 +119,9 @@ export default function DepartmentAmountsPage() {
               <tr style={{ fontWeight: 'bold', backgroundColor: 'var(--background-alt, #f8fafc)' }}>
                 <td>합계</td>
                 {data.columns.map((column) => (
-                  <td key={column.code}>{money(columnTotals[column.code])}</td>
+                  <td key={column.code} className="text-right">{money(columnTotals[column.code])}</td>
                 ))}
-                <td><strong>{money(columnTotals['total_amount'])}</strong></td>
+                <td className="text-right"><strong>{money(columnTotals['total_amount'])}</strong></td>
               </tr>
             </tfoot>
           </table>

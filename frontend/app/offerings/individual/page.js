@@ -2,14 +2,16 @@
 
 import { useEffect, useState } from 'react';
 import SectionTabs from '../../../components/SectionTabs';
-import { apiFetch } from '../../../lib/api';
+import { apiFetch, API_BASE, formatMoney } from '../../../lib/api';
 import { offeringMenuItems } from '../../../lib/appMenus';
+import { useYear } from '../../../lib/YearContext';
 
 function money(value) {
-  return new Intl.NumberFormat('ko-KR').format(Number(value || 0));
+  return formatMoney(value);
 }
 
 export default function IndividualOfferingPage() {
+  const { year } = useYear();
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -20,6 +22,13 @@ export default function IndividualOfferingPage() {
   const [isInitialized, setIsInitialized] = useState(false);
   const [startYm, setStartYm] = useState('');
   const [endYm, setEndYm] = useState('');
+
+  useEffect(() => {
+    if (year) {
+      setStartYm(`${year}-01`);
+      setEndYm(`${year}-12`);
+    }
+  }, [year]);
 
   // 성도 목록 검색 함수
   async function handleSearch(queryVal = searchQuery) {
@@ -233,9 +242,29 @@ export default function IndividualOfferingPage() {
                     <span style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>성도 통합 프로필</span>
                     <h2 style={{ margin: '4px 0 0 0', fontSize: '24px', fontWeight: '800' }}>{detailData.name} 성도님</h2>
                   </div>
-                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                    <span className="muted" style={{ fontSize: '13px' }}>고유 식별자:</span>
-                    <span className="code" style={{ fontSize: '13px' }}>{detailData.person_id}</span>
+                  <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+                    <a
+                      href={`${API_BASE}/offerings/individual.xlsx?person_id=${detailData.person_id}${startYm ? `&start_ym=${startYm}` : ''}${endYm ? `&end_ym=${endYm}` : ''}`}
+                      style={{
+                        padding: '8px 16px',
+                        borderRadius: '8px',
+                        background: '#10b981',
+                        color: 'white',
+                        fontWeight: '600',
+                        textDecoration: 'none',
+                        fontSize: '13px',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        boxShadow: '0 4px 6px -1px rgba(16, 185, 129, 0.1)'
+                      }}
+                    >
+                      <span>📥</span> 엑셀 다운로드
+                    </a>
+                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                      <span className="muted" style={{ fontSize: '13px' }}>고유 식별자:</span>
+                      <span className="code" style={{ fontSize: '13px' }}>{detailData.person_id}</span>
+                    </div>
                   </div>
                 </div>
 

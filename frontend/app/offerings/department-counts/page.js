@@ -3,12 +3,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import ExportButtons from '../../../components/ExportButtons';
 import SectionTabs from '../../../components/SectionTabs';
-import { apiFetch, API_BASE } from '../../../lib/api';
+import { apiFetch, API_BASE, formatMoney, formatNumber } from '../../../lib/api';
 import { offeringMenuItems } from '../../../lib/appMenus';
+import { useYear } from '../../../lib/YearContext';
 
 export default function DepartmentCountsPage() {
-  const today = new Date();
-  const [year, setYear] = useState(String(today.getFullYear()));
+  const { year, setYear } = useYear();
   const [month, setMonth] = useState('');
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
@@ -16,20 +16,24 @@ export default function DepartmentCountsPage() {
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const savedYear = sessionStorage.getItem('dept_counts_year');
       const savedMonth = sessionStorage.getItem('dept_counts_month');
-      if (savedYear) setYear(savedYear);
       if (savedMonth !== null) setMonth(savedMonth);
     }
     setIsInitialized(true);
   }, []);
 
   useEffect(() => {
-    if (!isInitialized) return;
+    if (!isInitialized || !year) return;
 
     if (typeof window !== 'undefined') {
-      sessionStorage.setItem('dept_counts_year', year);
       sessionStorage.setItem('dept_counts_month', month);
+    }
+
+    setError('');
+
+    const yearNum = Number(year);
+    if (isNaN(yearNum) || yearNum < 2000 || yearNum > 2100 || year.length < 4) {
+      return;
     }
 
     const query = new URLSearchParams({ year });
@@ -40,6 +44,10 @@ export default function DepartmentCountsPage() {
   }, [year, month, isInitialized]);
 
   const exportHref = useMemo(() => {
+    const yearNum = Number(year);
+    if (!year || isNaN(yearNum) || yearNum < 2000 || yearNum > 2100 || year.length < 4) {
+      return '#';
+    }
     const query = new URLSearchParams({ year });
     if (month) query.set('month', month);
     return `${API_BASE}/offerings/department-summary-counts.xlsx?${query.toString()}`;
@@ -74,10 +82,6 @@ export default function DepartmentCountsPage() {
       </div>
       <div className="card form-grid">
         <label>
-          년도
-          <input value={year} onChange={(e) => setYear(e.target.value)} />
-        </label>
-        <label>
           월
           <select value={month} onChange={(e) => setMonth(e.target.value)}>
             <option value="">전체</option>
@@ -94,16 +98,16 @@ export default function DepartmentCountsPage() {
             <thead>
               <tr>
                 <th>회별</th>
-                {data.columns.map((column) => <th key={column.code}>{column.label}</th>)}
-                <th>전체 참여자수</th>
+                {data.columns.map((column) => <th key={column.code} className="text-right">{column.label}</th>)}
+                <th className="text-right">전체 참여자수</th>
               </tr>
             </thead>
             <tbody>
               {data.rows.map((row) => (
                 <tr key={row.department_name}>
                   <td>{row.department_name}</td>
-                  {data.columns.map((column) => <td key={column.code}>{row.participant_counts[column.code]}</td>)}
-                  <td><strong>{row.total_participants}</strong></td>
+                  {data.columns.map((column) => <td key={column.code} className="text-right">{formatNumber(row.participant_counts[column.code], '0')}</td>)}
+                  <td className="text-right"><strong>{formatNumber(row.total_participants, '0')}</strong></td>
                 </tr>
               ))}
             </tbody>
@@ -111,9 +115,9 @@ export default function DepartmentCountsPage() {
               <tr style={{ fontWeight: 'bold', backgroundColor: 'var(--background-alt, #f8fafc)' }}>
                 <td>합계</td>
                 {data.columns.map((column) => (
-                  <td key={column.code}>{columnTotals[column.code]}</td>
+                  <td key={column.code} className="text-right">{formatNumber(columnTotals[column.code], '0')}</td>
                 ))}
-                <td><strong>{columnTotals['total_participants']}</strong></td>
+                <td className="text-right"><strong>{formatNumber(columnTotals['total_participants'], '0')}</strong></td>
               </tr>
             </tfoot>
           </table>

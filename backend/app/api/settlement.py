@@ -13,6 +13,7 @@ from app.services.settlement_service import (
     build_participation_report,
     build_settlement_form,
     build_weekly_report,
+    build_quarterly_report,
 )
 
 router = APIRouter(prefix="/settlement", tags=["settlement"])
@@ -196,4 +197,113 @@ def export_weekly_report(
         iter([buffer.getvalue()]),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="weekly-report-{year}-{month:02d}.xlsx"'},
+    )
+
+
+@router.get("/quarterly")
+def get_quarterly_report(
+    year: int = Query(..., ge=2000, le=2100),
+    quarter: int = Query(..., ge=1, le=4),
+    db: Session = Depends(get_db),
+):
+    return build_quarterly_report(db, year, quarter)
+
+
+@router.get("/quarterly.xlsx")
+def export_quarterly_report(
+    year: int = Query(..., ge=2000, le=2100),
+    quarter: int = Query(..., ge=1, le=4),
+    db: Session = Depends(get_db),
+):
+    data = build_quarterly_report(db, year, quarter)
+    
+    # We will build sheets matching the Excel layout
+    # Sheet 1: 수지현황
+    rows = []
+    
+    # 1. 수입 내역
+    rows.append({"구분": "1. 수입 내역", "상세": "", data["months"][0]: "", data["months"][1]: "", data["months"][2]: "", "분기합계": ""})
+    rows.append({"구분": "구 분", "상세": "", data["months"][0]: data["months"][0], data["months"][1]: data["months"][1], data["months"][2]: data["months"][2], "분기합계": "분기합계"})
+    
+    for item in data["income"]:
+        rows.append({
+            "구분": "헌금" if item["category"] != "헌금이외의 수입합계" else "헌금이외의 수입합계",
+            "상세": item["category"],
+            data["months"][0]: item["monthly"][0],
+            data["months"][1]: item["monthly"][1],
+            data["months"][2]: item["monthly"][2],
+            "분기합계": item["total"],
+        })
+    rows.append({
+        "구분": "合 計",
+        "상세": "",
+        data["months"][0]: data["income_total"][0],
+        data["months"][1]: data["income_total"][1],
+        data["months"][2]: data["income_total"][2],
+        "분기합계": sum(data["income_total"]),
+    })
+    
+    rows.append({}) # Empty spacer row
+    
+    # 2. 지출 내역
+    rows.append({"구분": "2. 지출 내역", "상세": "", data["months"][0]: "", data["months"][1]: "", data["months"][2]: "", "분기합계": ""})
+    rows.append({"구분": "구 분", "상세": "", data["months"][0]: data["months"][0], data["months"][1]: data["months"][1], data["months"][2]: data["months"][2], "분기합계": "분기합계"})
+    
+    for item in data["expense"]:
+        rows.append({
+            "구분": item["category"],
+            "상세": "",
+            data["months"][0]: item["monthly"][0],
+            data["months"][1]: item["monthly"][1],
+            data["months"][2]: item["monthly"][2],
+            "분기합계": item["total"],
+        })
+    rows.append({
+        "구분": "合 計",
+        "상세": "",
+        data["months"][0]: data["expense_total"][0],
+        data["months"][1]: data["expense_total"][1],
+        data["months"][2]: data["expense_total"][2],
+        "분기합계": sum(data["expense_total"]),
+    })
+    
+    rows.append({}) # Spacer
+    
+    # 3. 교회운영비 내역
+    rows.append({"구분": "3. 교회운영비 내역", "상세": "", data["months"][0]: "", data["months"][1]: "", data["months"][2]: "", "분기합계": ""})
+    rows.append({"구분": "구 분", "상세": "", data["months"][0]: data["months"][0], data["months"][1]: data["months"][1], data["months"][2]: data["months"][2], "분기합계": "분기합계"})
+    
+    for item in data["operating_expenses"]:
+        rows.append({
+            "구분": item["category"],
+            "상세": "",
+            data["months"][0]: item["monthly"][0],
+            data["months"][1]: item["monthly"][1],
+            data["months"][2]: item["monthly"][2],
+            "분기합계": item["total"],
+        })
+    rows.append({
+        "구분": "合 計",
+        "상세": "",
+        data["months"][0]: data["operating_total"][0],
+        data["months"][1]: data["operating_total"][1],
+        data["months"][2]: data["operating_total"][2],
+        "분기합계": sum(data["operating_total"]),
+    })
+    
+    rows.append({}) # Spacer
+    
+    # 4. 잔고현황
+    rows.append({"구분": "4. 분기말일자 현재 잔고현황", "상세": "", data["months"][0]: "", data["months"][1]: "", data["months"][2]: "", "분기합계": ""})
+    rows.append({"구분": "예,적금 및 현금", "상세": "", data["months"][0]: data["ending_balance"], data["months"][1]: "", data["months"][2]: "", "분기합계": ""})
+
+    df = pd.DataFrame(rows)
+    buffer = BytesIO()
+    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+        df.to_excel(writer, index=False, sheet_name=f"{quarter}분기수지현황")
+    buffer.seek(0)
+    return StreamingResponse(
+        iter([buffer.getvalue()]),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="quarterly-report-{year}-Q{quarter}.xlsx"'},
     )

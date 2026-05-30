@@ -192,6 +192,122 @@ def _frame_response(df: pd.DataFrame, sheet_name: str, filename: str) -> Streami
     )
 
 
+@router.get("/deposit-slip")
+def get_deposit_slip(date_str: str = Query(..., alias="date"), db: Session = Depends(get_db)):
+    try:
+        target_date = date.fromisoformat(date_str)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="올바른 날짜 형식이 아닙니다 (YYYY-MM-DD).")
+
+    vouchers = db.scalars(
+        select(Voucher)
+        .options(joinedload(Voucher.account))
+        .where(
+            Voucher.source_workbook == WEEKLY_SOURCE_WORKBOOK,
+            Voucher.source_sheet == WEEKLY_SOURCE_SHEET,
+            Voucher.voucher_date == target_date,
+        )
+    ).all()
+
+    if not vouchers:
+        return {
+            "date": date_str,
+            "slip_no": f"수입-{target_date.strftime('%Y%m%d')}-001",
+            "items": [],
+            "total_amount": 0.0,
+        }
+
+    categories = [
+        {"name": "일반계정", "codes": {"11000", "11200", "11100", "11400", "11500", "23000"}},
+        {"name": "교회학교 후원회비", "codes": {"13000"}},
+        {"name": "건축헌금통장", "codes": {"11300"}},
+        {"name": "사랑의헌금", "codes": {"14000"}},
+        {"name": "선교회비", "codes": {"12000"}},
+        {"name": "세계선교회비", "codes": {"12100", "12200"}},
+        {"name": "해외후원참여헌금", "codes": {"25030", "15100", "15200", "15800", "15900"}},
+        {"name": "E/V헌금", "codes": {"25040", "63", "62900"}},
+    ]
+
+    amounts = {cat["name"]: Decimal("0") for cat in categories}
+    other_amount = Decimal("0")
+
+    for v in vouchers:
+        code = v.account.code if v.account else None
+        amount = Decimal(v.amount or 0)
+        matched = False
+        for cat in categories:
+            if code in cat["codes"]:
+                amounts[cat["name"]] += amount
+                matched = True
+                break
+        if not matched:
+            name_lower = (v.account.name if v.account else "").lower()
+            if "일반" in name_lower or (v.fund_name and "일반" in v.fund_name):
+                amounts["일반계정"] += amount
+            elif "후원" in name_lower:
+                amounts["교회학교 후원회비"] += amount
+            elif "건축" in name_lower:
+                amounts["건축헌금통장"] += amount
+            elif "사랑" in name_lower:
+                amounts["사랑의헌금"] += amount
+            elif "선교회비" in name_lower:
+                amounts["선교회비"] += amount
+            elif "세계선교" in name_lower:
+                amounts["세계선교회비"] += amount
+            elif "해외" in name_lower:
+                amounts["해외후원참여헌금"] += amount
+            elif "승강기" in name_lower or "e/v" in name_lower or "ev" in name_lower:
+                amounts["E/V헌금"] += amount
+            else:
+                other_amount += amount
+
+    if other_amount > 0:
+        amounts["일반계정"] += other_amount
+
+    total_amount = sum(amounts.values())
+    items = []
+    for cat in categories:
+        name = cat["name"]
+        items.append({
+            "category": name,
+            "amount": float(amounts[name]),
+        })
+
+    slip_no = f"수입-{target_date.strftime('%Y%m%d')}-001"
+
+    return {
+        "date": date_str,
+        "slip_no": slip_no,
+        "items": items,
+        "total_amount": float(total_amount),
+    }
+
+
+@router.get("/deposit-slip.xlsx")
+def export_deposit_slip(date_str: str = Query(..., alias="date"), db: Session = Depends(get_db)):
+    res = get_deposit_slip(date_str=date_str, db=db)
+    
+    rows = []
+    for item in res["items"]:
+        rows.append({
+            "입금일자": res["date"],
+            "전표번호": res["slip_no"],
+            "계정과목": item["category"],
+            "금액": item["amount"],
+        })
+    
+    if rows:
+        rows.append({
+            "입금일자": "합계",
+            "전표번호": "",
+            "계정과목": "",
+            "금액": res["total_amount"],
+        })
+        
+    df = pd.DataFrame(rows, columns=["입금일자", "전표번호", "계정과목", "금액"])
+    return _frame_response(df, "입금전표", f"deposit-slip-{date_str}.xlsx")
+
+
 @router.get("/weekly-cumulative")
 def get_weekly_cumulative(year: int = Query(..., ge=2000, le=2100), month: int | None = Query(default=None, ge=1, le=12), db: Session = Depends(get_db)):
     rows = _weekly_rows_by_period(db, year, month)
@@ -548,7 +664,16 @@ def get_individual_offerings(
 
     for v in vouchers:
         annual_summary[str(v.voucher_date.year)] += v.amount
-        category = v.account.report_category or v.account.name if v.account else "기타"
+        if v.account:
+            details = []
+            if v.account.middle_category: details.append(v.account.middle_category)
+            if v.account.report_category: details.append(v.account.report_category)
+            if details:
+                category = f"{v.account.name} ({' > '.join(details)})"
+            else:
+                category = v.account.name
+        else:
+            category = "기타"
         category_summary[category] += v.amount
 
         detail_rows.append({
@@ -557,7 +682,7 @@ def get_individual_offerings(
             "description": v.description,
             "amount": float(v.amount),
             "account_code": v.account.code if v.account else None,
-            "account_name": v.account.name if v.account else None,
+            "account_name": category if v.account else None,
             "note": v.note,
         })
 
@@ -579,3 +704,41 @@ def get_individual_offerings(
         "total_amount": float(sum(annual_summary.values())),
         "vouchers": detail_rows
     }
+
+
+@router.get("/individual.xlsx")
+def export_individual_offerings(
+    person_id: str = Query(...),
+    start_ym: str | None = Query(default=None),
+    end_ym: str | None = Query(default=None),
+    db: Session = Depends(get_db)
+):
+    res = get_individual_offerings(person_id=person_id, start_ym=start_ym, end_ym=end_ym, db=db)
+    
+    df_vouchers = pd.DataFrame(res["vouchers"])
+    if not df_vouchers.empty:
+        df_vouchers = df_vouchers.drop(columns=["id"], errors="ignore")
+        df_vouchers.columns = ["일자", "적요", "금액", "계정코드", "계정과목", "비고"]
+        df_vouchers = df_vouchers[["일자", "계정과목", "금액", "적요", "비고"]]
+    else:
+        df_vouchers = pd.DataFrame(columns=["일자", "계정과목", "금액", "적요", "비고"])
+    
+    df_annual = pd.DataFrame([{"연도": k, "금액": v} for k, v in res["annual_summary"].items()])
+    df_category = pd.DataFrame([{"헌금구분": k, "금액": v} for k, v in res["category_summary"].items()])
+
+    buffer = BytesIO()
+    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+        df_vouchers.to_excel(writer, index=False, sheet_name="상세헌금내역")
+        df_annual.to_excel(writer, index=False, sheet_name="연도별집계")
+        df_category.to_excel(writer, index=False, sheet_name="종류별집계")
+    buffer.seek(0)
+    
+    # We must quote or encode the filename properly
+    import urllib.parse
+    encoded_filename = urllib.parse.quote(f"individual-offering-{res['name']}.xlsx")
+    
+    return StreamingResponse(
+        iter([buffer.getvalue()]),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}"},
+    )

@@ -5,6 +5,7 @@ import ExportButtons from '../../../components/ExportButtons';
 import SectionTabs from '../../../components/SectionTabs';
 import { apiFetch, API_BASE } from '../../../lib/api';
 import { offeringMenuItems } from '../../../lib/appMenus';
+import { useYear } from '../../../lib/YearContext';
 
 const emptyForm = {
   member_no: '',
@@ -55,7 +56,7 @@ function getNextAvailableMemberNo(dept, currentRows) {
 }
 
 export default function EnvelopesPage() {
-  const [year, setYear] = useState(new Date().getFullYear());
+  const { year, setYear } = useYear();
   const [query, setQuery] = useState('');
   const [rows, setRows] = useState([]);
   const [editingId, setEditingId] = useState(null);
@@ -108,9 +109,7 @@ export default function EnvelopesPage() {
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const savedYear = sessionStorage.getItem('envelopes_year');
       const savedQuery = sessionStorage.getItem('envelopes_query');
-      if (savedYear) setYear(Number(savedYear));
       if (savedQuery !== null) setQuery(savedQuery);
     }
     setIsInitialized(true);
@@ -133,11 +132,7 @@ export default function EnvelopesPage() {
   }
 
   useEffect(() => {
-    if (!isInitialized) return;
-
-    if (typeof window !== 'undefined') {
-      sessionStorage.setItem('envelopes_year', String(year));
-    }
+    if (!isInitialized || !year) return;
     loadRows(query, year);
   }, [year, isInitialized]);
 
@@ -229,26 +224,13 @@ export default function EnvelopesPage() {
             <h2>헌금봉투 번호 조회, 수정, 등록</h2>
             <p className="muted">봉투번호 기준정보를 조회하고 수정하거나 새로 등록할 수 있어.</p>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontWeight: 'bold' }}>기준 연도:</span>
-            <select 
-              value={year} 
-              onChange={(e) => setYear(Number(e.target.value))}
-              style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid #ccc', fontSize: '15px' }}
-            >
-              <option value={2025}>2025년</option>
-              <option value={2026}>2026년</option>
-              <option value={2027}>2027년</option>
-              <option value={2028}>2028년</option>
-            </select>
-          </div>
         </div>
-        <ExportButtons items={[{ label: `${year}년 엑셀 다운로드`, href: exportHref }]} />
+        <ExportButtons items={[{ label: '엑셀 다운로드', href: exportHref }]} />
       </div>
 
       <div className="grid grid--2">
         <form className="card form-grid" onSubmit={handleSubmit} style={{ width: '100%', minWidth: 0, alignSelf: 'start' }}>
-          <h2>{editingId ? `${year}년 봉투번호 수정` : `${year}년 봉투번호 등록`}</h2>
+          <h2>{editingId ? '봉투번호 수정' : '봉투번호 등록'}</h2>
           <label>
             봉투번호
             <input 

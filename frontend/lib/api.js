@@ -32,4 +32,54 @@ export async function apiFetch(path, options = {}) {
   return response.text();
 }
 
+export function formatMoney(value, zeroPlaceholder = '0') {
+  if (value === null || value === undefined || value === '') return zeroPlaceholder;
+  const num = Math.round(Number(value));
+  if (isNaN(num)) return zeroPlaceholder;
+  if (num === 0) return zeroPlaceholder;
+  
+  const isNegative = num < 0;
+  const absValStr = String(Math.abs(num));
+  
+  if (absValStr.length <= 3) {
+    return (isNegative ? '-' : '') + absValStr;
+  }
+  
+  let result = '';
+  let count = 0;
+  for (let i = absValStr.length - 1; i >= 0; i--) {
+    if (count > 0 && count % 3 === 0) {
+      if (count === 3) {
+        result = '.' + result;
+      } else {
+        result = ',' + result;
+      }
+    }
+    result = absValStr[i] + result;
+    count++;
+  }
+  return (isNegative ? '-' : '') + result;
+}
+
+export function formatNumber(value, zeroPlaceholder = '0') {
+  if (value === null || value === undefined || value === '') return zeroPlaceholder;
+  const num = Math.round(Number(value));
+  if (isNaN(num)) return zeroPlaceholder;
+  if (num === 0) return zeroPlaceholder;
+  
+  const isNegative = num < 0;
+  const absValStr = String(Math.abs(num));
+  
+  let result = '';
+  let count = 0;
+  for (let i = absValStr.length - 1; i >= 0; i--) {
+    if (count > 0 && count % 3 === 0) {
+      result = ',' + result;
+    }
+    result = absValStr[i] + result;
+    count++;
+  }
+  return (isNegative ? '-' : '') + result;
+}
+
 export { API_BASE };

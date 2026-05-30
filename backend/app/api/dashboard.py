@@ -9,8 +9,8 @@ router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
 
 @router.get("/summary", response_model=DashboardSummary)
-def dashboard_summary(db: Session = Depends(get_db)):
-    return build_dashboard_summary(db)
+def dashboard_summary(year: int | None = None, db: Session = Depends(get_db)):
+    return build_dashboard_summary(db, year)
 
 
 @router.get("/offerings", response_model=OfferingDashboardSummary)

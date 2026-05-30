@@ -3,16 +3,16 @@
 import { useEffect, useMemo, useState } from 'react';
 import ExportButtons from '../../../components/ExportButtons';
 import SectionTabs from '../../../components/SectionTabs';
-import { apiFetch, API_BASE } from '../../../lib/api';
+import { apiFetch, API_BASE, formatMoney } from '../../../lib/api';
 import { offeringMenuItems } from '../../../lib/appMenus';
+import { useYear } from '../../../lib/YearContext';
 
 function money(value) {
-  return new Intl.NumberFormat('ko-KR').format(Number(value || 0));
+  return formatMoney(value);
 }
 
 export default function OfferingCumulativePage() {
-  const today = new Date();
-  const [year, setYear] = useState(String(today.getFullYear()));
+  const { year, setYear } = useYear();
   const [month, setMonth] = useState('');
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
@@ -20,20 +20,24 @@ export default function OfferingCumulativePage() {
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const savedYear = sessionStorage.getItem('cumulative_year');
       const savedMonth = sessionStorage.getItem('cumulative_month');
-      if (savedYear) setYear(savedYear);
       if (savedMonth !== null) setMonth(savedMonth);
     }
     setIsInitialized(true);
   }, []);
 
   useEffect(() => {
-    if (!isInitialized) return;
+    if (!isInitialized || !year) return;
 
     if (typeof window !== 'undefined') {
-      sessionStorage.setItem('cumulative_year', year);
       sessionStorage.setItem('cumulative_month', month);
+    }
+
+    setError('');
+
+    const yearNum = Number(year);
+    if (isNaN(yearNum) || yearNum < 2000 || yearNum > 2100 || year.length < 4) {
+      return;
     }
 
     const query = new URLSearchParams({ year });
@@ -44,6 +48,10 @@ export default function OfferingCumulativePage() {
   }, [year, month, isInitialized]);
 
   const exportHref = useMemo(() => {
+    const yearNum = Number(year);
+    if (!year || isNaN(yearNum) || yearNum < 2000 || yearNum > 2100 || year.length < 4) {
+      return '#';
+    }
     const query = new URLSearchParams({ year });
     if (month) query.set('month', month);
     return `${API_BASE}/offerings/weekly-cumulative.xlsx?${query.toString()}`;
@@ -81,10 +89,6 @@ export default function OfferingCumulativePage() {
 
       <div className="card form-grid">
         <label>
-          년도
-          <input value={year} onChange={(e) => setYear(e.target.value)} />
-        </label>
-        <label>
           월
           <select value={month} onChange={(e) => setMonth(e.target.value)}>
             <option value="">전체</option>
@@ -113,15 +117,15 @@ export default function OfferingCumulativePage() {
                   <th>이름</th>
                   <th>회별</th>
                   <th>구역</th>
-                  <th>십일조</th>
-                  <th>주일헌금</th>
-                  <th>세계선교분담금</th>
-                  <th>후원회비</th>
-                  <th>건축헌금</th>
-                  <th>선교회비</th>
-                  <th>세계선교</th>
-                  <th>사랑의헌금</th>
-                  <th>합계</th>
+                  <th className="text-right">십일조</th>
+                  <th className="text-right">주일헌금</th>
+                  <th className="text-right">세계선교분담금</th>
+                  <th className="text-right">후원회비</th>
+                  <th className="text-right">건축헌금</th>
+                  <th className="text-right">선교회비</th>
+                  <th className="text-right">세계선교</th>
+                  <th className="text-right">사랑의헌금</th>
+                  <th className="text-right">합계</th>
                 </tr>
               </thead>
               <tbody>
@@ -132,30 +136,30 @@ export default function OfferingCumulativePage() {
                     <td>{row.member_name}</td>
                     <td>{row.department_name}</td>
                     <td>{row.district_name}</td>
-                    <td>{money(row.offerings?.['11000'])}</td>
-                    <td>{money(row.offerings?.['11200'])}</td>
-                    <td>{money(row.offerings?.['12100'])}</td>
-                    <td>{money(row.offerings?.['13000'])}</td>
-                    <td>{money(row.offerings?.['11300'])}</td>
-                    <td>{money(row.offerings?.['12000'])}</td>
-                    <td>{money(row.offerings?.['12200'])}</td>
-                    <td>{money(row.offerings?.['14000'])}</td>
-                    <td><strong>{money(row.row_total)}</strong></td>
+                    <td className="text-right">{money(row.offerings?.['11000'])}</td>
+                    <td className="text-right">{money(row.offerings?.['11200'])}</td>
+                    <td className="text-right">{money(row.offerings?.['12100'])}</td>
+                    <td className="text-right">{money(row.offerings?.['13000'])}</td>
+                    <td className="text-right">{money(row.offerings?.['11300'])}</td>
+                    <td className="text-right">{money(row.offerings?.['12000'])}</td>
+                    <td className="text-right">{money(row.offerings?.['12200'])}</td>
+                    <td className="text-right">{money(row.offerings?.['14000'])}</td>
+                    <td className="text-right"><strong>{money(row.row_total)}</strong></td>
                   </tr>
                 ))}
               </tbody>
               <tfoot>
                 <tr style={{ fontWeight: 'bold', backgroundColor: 'var(--background-alt, #f8fafc)' }}>
                   <td colSpan="5" style={{ textAlign: 'center' }}>합계</td>
-                  <td>{money(totals['11000'])}</td>
-                  <td>{money(totals['11200'])}</td>
-                  <td>{money(totals['12100'])}</td>
-                  <td>{money(totals['13000'])}</td>
-                  <td>{money(totals['11300'])}</td>
-                  <td>{money(totals['12000'])}</td>
-                  <td>{money(totals['12200'])}</td>
-                  <td>{money(totals['14000'])}</td>
-                  <td><strong>{money(totals['row_total'])}</strong></td>
+                  <td className="text-right">{money(totals['11000'])}</td>
+                  <td className="text-right">{money(totals['11200'])}</td>
+                  <td className="text-right">{money(totals['12100'])}</td>
+                  <td className="text-right">{money(totals['13000'])}</td>
+                  <td className="text-right">{money(totals['11300'])}</td>
+                  <td className="text-right">{money(totals['12000'])}</td>
+                  <td className="text-right">{money(totals['12200'])}</td>
+                  <td className="text-right">{money(totals['14000'])}</td>
+                  <td className="text-right"><strong>{money(totals['row_total'])}</strong></td>
                 </tr>
               </tfoot>
             </table>

@@ -3,27 +3,21 @@
 import { useEffect, useMemo, useState } from 'react';
 import ExportButtons from '../../../components/ExportButtons';
 import SettlementTabs from '../../../components/SettlementTabs';
-import { apiFetch, API_BASE } from '../../../lib/api';
+import { apiFetch, API_BASE, formatMoney, formatNumber } from '../../../lib/api';
+import { useYear } from '../../../lib/YearContext';
 
 const MONTH_LABELS = ['1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월'];
 
 function formatAmount(val) {
-  if (val === null || val === undefined || val === '') return '-';
-  const num = Number(val);
-  if (isNaN(num)) return '-';
-  if (num === 0) return '-';
-  return num.toLocaleString('ko-KR');
+  return formatMoney(val, '-');
 }
 
 function formatCount(val) {
-  if (val === null || val === undefined) return '-';
-  const num = Number(val);
-  if (isNaN(num) || num === 0) return '-';
-  return num.toLocaleString('ko-KR');
+  return formatNumber(val, '-');
 }
 
 export default function ParticipationPage() {
-  const [year, setYear] = useState(new Date().getFullYear());
+  const { year, setYear } = useYear();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -59,18 +53,6 @@ export default function ParticipationPage() {
           <div>
             <h2>참여현황 및 주요관리항목 지출</h2>
             <p className="muted">월별 헌금 참여 인원·금액 현황과 주요 관리항목 지출 추이</p>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontWeight: 'bold' }}>기준 연도:</span>
-            <select
-              value={year}
-              onChange={(e) => setYear(Number(e.target.value))}
-              style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid #ccc', fontSize: '14px' }}
-            >
-              {[2024, 2025, 2026, 2027, 2028].map(y => (
-                <option key={y} value={y}>{y}년</option>
-              ))}
-            </select>
           </div>
         </div>
         <ExportButtons items={[{ label: '엑셀 다운로드', href: exportHref }]} />

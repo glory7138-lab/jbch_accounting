@@ -87,7 +87,7 @@ OFFERING_TYPES = [
 ]
 
 BUDGET_MAP = {
-    "수입": {
+    "income": {
         "십일조": 25000000,
         "주일헌금": 2056667,
         "집회헌금": 887500,
@@ -103,7 +103,7 @@ BUDGET_MAP = {
         "선교회비": 608333,
         "세계선교회비": 933333,
     },
-    "지출": {
+    "expense": {
         "총회비": 5500000,
         "세계선교분담금": 2800000,
         "주일말씀": 525480,
@@ -227,12 +227,12 @@ def build_settlement_form(db: Session, year: int, month: int) -> dict:
         for item_name in group_def["income_accounts"]:
             prev_amt = sum(
                 (Decimal(str(v.amount or 0)) for v in prev_vouchers
-                 if v.entry_type == "수입" and v.account and _match_account_name(v.account.name, [item_name])),
+                 if v.entry_type == "income" and v.account and _match_account_name(v.account.name, [item_name])),
                 Decimal(0),
             )
             curr_amt = sum(
                 (Decimal(str(v.amount or 0)) for v in curr_vouchers
-                 if v.entry_type == "수입" and v.account and _match_account_name(v.account.name, [item_name])),
+                 if v.entry_type == "income" and v.account and _match_account_name(v.account.name, [item_name])),
                 Decimal(0),
             )
             income_items.append({"name": item_name, "prev_month": float(prev_amt), "current_month": float(curr_amt)})
@@ -243,11 +243,11 @@ def build_settlement_form(db: Session, year: int, month: int) -> dict:
         matched_income_prev = sum(i["prev_month"] for i in income_items)
         matched_income_curr = sum(i["current_month"] for i in income_items)
         unmatched_prev = sum(
-            (Decimal(str(v.amount or 0)) for v in prev_vouchers if v.entry_type == "수입"),
+            (Decimal(str(v.amount or 0)) for v in prev_vouchers if v.entry_type == "income"),
             Decimal(0),
         ) - Decimal(str(matched_income_prev))
         unmatched_curr = sum(
-            (Decimal(str(v.amount or 0)) for v in curr_vouchers if v.entry_type == "수입"),
+            (Decimal(str(v.amount or 0)) for v in curr_vouchers if v.entry_type == "income"),
             Decimal(0),
         ) - Decimal(str(matched_income_curr))
         if unmatched_prev > 0 or unmatched_curr > 0:
@@ -262,12 +262,12 @@ def build_settlement_form(db: Session, year: int, month: int) -> dict:
         for item_name in group_def["expense_accounts"]:
             prev_amt = sum(
                 (Decimal(str(v.amount or 0)) for v in prev_vouchers
-                 if v.entry_type == "지출" and v.account and _match_account_name(v.account.name, [item_name])),
+                 if v.entry_type == "expense" and v.account and _match_account_name(v.account.name, [item_name])),
                 Decimal(0),
             )
             curr_amt = sum(
                 (Decimal(str(v.amount or 0)) for v in curr_vouchers
-                 if v.entry_type == "지출" and v.account and _match_account_name(v.account.name, [item_name])),
+                 if v.entry_type == "expense" and v.account and _match_account_name(v.account.name, [item_name])),
                 Decimal(0),
             )
             expense_items.append({"name": item_name, "prev_month": float(prev_amt), "current_month": float(curr_amt)})
@@ -278,11 +278,11 @@ def build_settlement_form(db: Session, year: int, month: int) -> dict:
         matched_expense_prev = sum(e["prev_month"] for e in expense_items)
         matched_expense_curr = sum(e["current_month"] for e in expense_items)
         unmatched_exp_prev = sum(
-            (Decimal(str(v.amount or 0)) for v in prev_vouchers if v.entry_type == "지출"),
+            (Decimal(str(v.amount or 0)) for v in prev_vouchers if v.entry_type == "expense"),
             Decimal(0),
         ) - Decimal(str(matched_expense_prev))
         unmatched_exp_curr = sum(
-            (Decimal(str(v.amount or 0)) for v in curr_vouchers if v.entry_type == "지출"),
+            (Decimal(str(v.amount or 0)) for v in curr_vouchers if v.entry_type == "expense"),
             Decimal(0),
         ) - Decimal(str(matched_expense_curr))
         if unmatched_exp_prev > 0 or unmatched_exp_curr > 0:
@@ -292,8 +292,8 @@ def build_settlement_form(db: Session, year: int, month: int) -> dict:
 
         # Calculate carry-forward (previous months cumulative balance)
         prior_vouchers = _get_vouchers(db, year_start, before_curr - __import__('datetime').timedelta(days=1), fund_names) if before_curr > year_start else []
-        prior_income = sum((Decimal(str(v.amount or 0)) for v in prior_vouchers if v.entry_type == "수입"), Decimal(0))
-        prior_expense = sum((Decimal(str(v.amount or 0)) for v in prior_vouchers if v.entry_type == "지출"), Decimal(0))
+        prior_income = sum((Decimal(str(v.amount or 0)) for v in prior_vouchers if v.entry_type == "income"), Decimal(0))
+        prior_expense = sum((Decimal(str(v.amount or 0)) for v in prior_vouchers if v.entry_type == "expense"), Decimal(0))
         prev_balance = float(prior_income - prior_expense)
         carry_forward = float(prior_income + income_curr_total - prior_expense - expense_curr_total)
 
@@ -351,7 +351,7 @@ def build_participation_report(db: Session, year: int) -> dict:
             month_vouchers = [
                 v for v in all_vouchers
                 if m_start <= v.voucher_date <= m_end
-                and v.entry_type == "수입"
+                and v.entry_type == "income"
                 and v.account
                 and _match_account_name(v.account.name, [offering_name])
             ]
@@ -371,7 +371,7 @@ def build_participation_report(db: Session, year: int) -> dict:
         # Previous December
         prev_dec_data = [
             v for v in prev_dec_vouchers
-            if v.entry_type == "수입"
+            if v.entry_type == "income"
             and v.account
             and _match_account_name(v.account.name, [offering_name])
         ]
@@ -401,7 +401,7 @@ def build_participation_report(db: Session, year: int) -> dict:
             month_amount = sum(
                 (Decimal(str(v.amount or 0)) for v in all_vouchers
                  if m_start <= v.voucher_date <= m_end
-                 and v.entry_type == "지출"
+                 and v.entry_type == "expense"
                  and v.account
                  and _match_account_name(v.account.name, [expense_name])),
                 Decimal(0),
@@ -480,7 +480,7 @@ def build_weekly_report(db: Session, year: int, month: int) -> dict:
                 amt = sum(
                     (Decimal(str(v.amount or 0)) for v in all_month_vouchers
                      if w_start <= v.voucher_date <= w_end
-                     and v.entry_type == "수입"
+                     and v.entry_type == "income"
                      and v.account
                      and _match_account_name(v.account.name, [item_name])),
                     Decimal(0),
@@ -489,7 +489,7 @@ def build_weekly_report(db: Session, year: int, month: int) -> dict:
                 income_weekly_totals[w_idx] += amt
                 item_cumulative += amt
             income_cumulative += item_cumulative
-            budget_val = _get_budget_amount("수입", item_name)
+            budget_val = _get_budget_amount("income", item_name)
             diff_val = float(item_cumulative) - budget_val
             income_items.append({
                 "name": item_name,
@@ -511,7 +511,7 @@ def build_weekly_report(db: Session, year: int, month: int) -> dict:
                 amt = sum(
                     (Decimal(str(v.amount or 0)) for v in all_month_vouchers
                      if w_start <= v.voucher_date <= w_end
-                     and v.entry_type == "지출"
+                     and v.entry_type == "expense"
                      and v.account
                      and _match_account_name(v.account.name, [item_name])),
                     Decimal(0),
@@ -520,7 +520,7 @@ def build_weekly_report(db: Session, year: int, month: int) -> dict:
                 expense_weekly_totals[w_idx] += amt
                 item_cumulative += amt
             expense_cumulative += item_cumulative
-            budget_val = _get_budget_amount("지출", item_name)
+            budget_val = _get_budget_amount("expense", item_name)
             diff_val = budget_val - float(item_cumulative)
             expense_items.append({
                 "name": item_name,
@@ -531,8 +531,8 @@ def build_weekly_report(db: Session, year: int, month: int) -> dict:
             })
 
         # Prior balance
-        prior_income = sum((Decimal(str(v.amount or 0)) for v in prior_vouchers if v.entry_type == "수입"), Decimal(0))
-        prior_expense = sum((Decimal(str(v.amount or 0)) for v in prior_vouchers if v.entry_type == "지출"), Decimal(0))
+        prior_income = sum((Decimal(str(v.amount or 0)) for v in prior_vouchers if v.entry_type == "income"), Decimal(0))
+        prior_expense = sum((Decimal(str(v.amount or 0)) for v in prior_vouchers if v.entry_type == "expense"), Decimal(0))
         prev_balance = float(prior_income - prior_expense)
 
         # Account balance per week (cumulative)
@@ -597,4 +597,211 @@ def build_weekly_report(db: Session, year: int, month: int) -> dict:
             "expense_difference": grand_expense_difference,
         },
     }
+
+
+def build_quarterly_report(db: Session, year: int, quarter: int) -> dict:
+    """Build quarterly income/expense statement aggregated by month."""
+    start_month = (quarter - 1) * 3 + 1
+    end_month = quarter * 3
+
+    # Define date range for this quarter
+    start_date = date(year, start_month, 1)
+    end_date = date(year, end_month, monthrange(year, end_month)[1])
+
+    # Fetch all vouchers for this quarter
+    vouchers = db.scalars(
+        select(Voucher)
+        .options(joinedload(Voucher.account))
+        .where(Voucher.voucher_date >= start_date, Voucher.voucher_date <= end_date)
+    ).all()
+
+    # Classification lists
+    income_categories = [
+        "십일조",
+        "주일헌금",
+        "건축관련헌금",
+        "기타헌금",
+        "선교회비",
+        "세계선교헌금",
+        "헌금이외의 수입합계",
+    ]
+
+    expense_categories = [
+        "교회운영비",
+        "지역교회지원",
+        "차량 및 부동산 구입",
+        "비품구입",
+        "채무상환 및 이자",
+        "총회송금 - 전도분담금",
+        "총회송금 - 퇴직적립금",
+        "총회송금 - 선교회비",
+        "총회송금 - 세계선교헌금",
+        "총회송금 - 세계선교분담금(정기책정분+비정기분)",
+        "총회송금 - 해외교회 입당헌금",
+        "이외의 기타지출 합계",
+    ]
+
+    operating_categories = [
+        "교회당 유지관련 시설보수비등",
+        "각종 공과금",
+        "강사사례",
+        "전도인 전도지원금(월정액)",
+        "직원급여등",
+        "경조사비",
+        "교회행사비",
+        "사무운영등 기타경비",
+    ]
+
+    # Helper function to classify vouchers
+    def classify_voucher(name: str, code: str, entry_type: str) -> str:
+        name_norm = _normalize(name or "")
+        if entry_type == "income":
+            if "십일조" in name_norm or code == "11000":
+                return "십일조"
+            elif "주일헌금" in name_norm or code == "11200":
+                return "주일헌금"
+            elif "건축" in name_norm or code == "11300":
+                return "건축관련헌금"
+            elif "선교회비" in name_norm or code == "12000":
+                return "선교회비"
+            elif "세계선교" in name_norm or code in ("12100", "12200"):
+                return "세계선교헌금"
+            elif any(k in name_norm for k in ("감사", "집회", "사랑", "기타헌금")) or code in ("11100", "11400", "14000", "11500"):
+                return "기타헌금"
+            else:
+                return "헌금이외의 수입합계"
+        else:
+            # Check operating expenses first
+            if any(k in name_norm for k in ("시설", "보수", "유지관리", "수리", "공사", "소방", "안전")):
+                return "교회당 유지관련 시설보수비등"
+            elif any(k in name_norm for k in ("공과금", "전기", "수도", "가스", "요금", "세금", "공과")):
+                return "각종 공과금"
+            elif any(k in name_norm for k in ("강사", "사례", "강사사례")):
+                return "강사사례"
+            elif any(k in name_norm for k in ("전도지원금", "전도인지원", "지원금(월정", "전도인 전도")):
+                return "전도인 전도지원금(월정액)"
+            elif any(k in name_norm for k in ("급여", "상여", "인건비", "직원", "보너스")):
+                return "직원급여등"
+            elif any(k in name_norm for k in ("경조사", "조사", "축의", "조의")):
+                return "경조사비"
+            elif any(k in name_norm for k in ("행사", "수련회", "대집회", "야외", "체육")):
+                return "교회행사비"
+            elif any(k in name_norm for k in ("사무", "비품", "기타경비", "도서", "우편", "소모품", "소사")):
+                return "사무운영등 기타경비"
+
+            # Check non-operating expenses
+            if any(k in name_norm for k in ("지역교회", "타교회", "울릉", "산청", "개척교회")):
+                return "지역교회지원"
+            elif any(k in name_norm for k in ("차량", "부동산", "토지", "건물", "구입", "할부금")):
+                return "차량 및 부동산 구입"
+            elif "비품구입" in name_norm:
+                return "비품구입"
+            elif any(k in name_norm for k in ("채무", "상환", "대출", "이자")):
+                return "채무상환 및 이자"
+            elif "전도분담" in name_norm or "전도 분담" in name_norm:
+                return "총회송금 - 전도분담금"
+            elif "퇴직" in name_norm or "퇴직적립" in name_norm:
+                return "총회송금 - 퇴직적립금"
+            elif "선교회비" in name_norm:
+                return "총회송금 - 선교회비"
+            elif "세계선교헌금" in name_norm:
+                return "총회송금 - 세계선교헌금"
+            elif "세계선교분담" in name_norm:
+                return "총회송금 - 세계선교분담금(정기책정분+비정기분)"
+            elif "해외교회" in name_norm or "입당헌금" in name_norm:
+                return "총회송금 - 해외교회 입당헌금"
+            else:
+                # Default to office operating expenses if not explicitly non-operating
+                return "사무운영등 기타경비"
+
+    # Initialize monthly matrices
+    # indices: 0 = start_month, 1 = start_month+1, 2 = start_month+2
+    income_monthly = {cat: [Decimal(0), Decimal(0), Decimal(0)] for cat in income_categories}
+    expense_monthly = {cat: [Decimal(0), Decimal(0), Decimal(0)] for cat in expense_categories}
+    operating_monthly = {cat: [Decimal(0), Decimal(0), Decimal(0)] for cat in operating_categories}
+
+    for v in vouchers:
+        m = v.voucher_date.month
+        m_idx = m - start_month
+        if m_idx < 0 or m_idx > 2:
+            continue
+        
+        amount = Decimal(str(v.amount or 0))
+        acct_name = v.account.name if v.account else ""
+        acct_code = v.account.code if v.account else ""
+
+        category = classify_voucher(acct_name, acct_code, v.entry_type)
+
+        if v.entry_type == "income":
+            if category in income_monthly:
+                income_monthly[category][m_idx] += amount
+        else:
+            if category in operating_categories:
+                operating_monthly[category][m_idx] += amount
+                # Operating expenses also add to the main "교회운영비" line item
+                expense_monthly["교회운영비"][m_idx] += amount
+            elif category in expense_monthly:
+                expense_monthly[category][m_idx] += amount
+
+    # Calculate quarter-end balance (savings & cash)
+    # Sum of all income minus expense from beginning of year up to end of this quarter
+    year_start = date(year, 1, 1)
+    prior_vouchers = db.scalars(
+        select(Voucher).where(Voucher.voucher_date >= year_start, Voucher.voucher_date <= end_date)
+    ).all()
+    
+    cumulative_income = sum((Decimal(str(v.amount or 0)) for v in prior_vouchers if v.entry_type == "income"), Decimal(0))
+    cumulative_expense = sum((Decimal(str(v.amount or 0)) for v in prior_vouchers if v.entry_type == "expense"), Decimal(0))
+    
+    # We can assume a base starting balance or just calculate current YTD balance
+    # Let's check if there are 2025 vouchers to get accurate balance
+    all_time_income = db.scalar(
+        select(func.sum(Voucher.amount)).where(Voucher.entry_type == "income", Voucher.voucher_date <= end_date)
+    ) or 0
+    all_time_expense = db.scalar(
+        select(func.sum(Voucher.amount)).where(Voucher.entry_type == "expense", Voucher.voucher_date <= end_date)
+    ) or 0
+    ending_balance = float(all_time_income - all_time_expense)
+
+    # Format output rows
+    income_rows = []
+    for cat in income_categories:
+        row_vals = [float(val) for val in income_monthly[cat]]
+        income_rows.append({
+            "category": cat,
+            "monthly": row_vals,
+            "total": sum(row_vals),
+        })
+
+    expense_rows = []
+    for cat in expense_categories:
+        row_vals = [float(val) for val in expense_monthly[cat]]
+        expense_rows.append({
+            "category": cat,
+            "monthly": row_vals,
+            "total": sum(row_vals),
+        })
+
+    operating_rows = []
+    for cat in operating_categories:
+        row_vals = [float(val) for val in operating_monthly[cat]]
+        operating_rows.append({
+            "category": cat,
+            "monthly": row_vals,
+            "total": sum(row_vals),
+        })
+
+    return {
+        "year": year,
+        "quarter": quarter,
+        "months": [f"{start_month}월", f"{start_month + 1}월", f"{end_month}월"],
+        "income": income_rows,
+        "expense": expense_rows,
+        "operating_expenses": operating_rows,
+        "income_total": [sum(x) for x in zip(*(row["monthly"] for row in income_rows))],
+        "expense_total": [sum(x) for x in zip(*(row["monthly"] for row in expense_rows))],
+        "operating_total": [sum(x) for x in zip(*(row["monthly"] for row in operating_rows))],
+        "ending_balance": ending_balance,
+    }
+
 

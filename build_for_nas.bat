@@ -4,7 +4,7 @@ echo  AccountingApp - NAS Deploy Package Builder
 echo ============================================
 echo.
 
-cd /d "D:\AccountingApp"
+cd /d "%~dp0"
 
 echo [1/4] Building Docker images (with NAS API URL baked in)...
 docker build --build-arg NEXT_PUBLIC_API_BASE_URL=http://jbchcw.com:8500/api -t accountingapp-frontend ./frontend

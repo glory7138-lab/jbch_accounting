@@ -18,11 +18,13 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
+import { apiFetch, API_BASE, formatMoney } from '../lib/api';
 import StatCard from '../components/StatCard';
-import { apiFetch, API_BASE } from '../lib/api';
+
+import { useYear } from '../lib/YearContext';
 
 function money(value) {
-  return new Intl.NumberFormat('ko-KR').format(Number(value || 0));
+  return formatMoney(value);
 }
 
 const COLORS = [
@@ -37,6 +39,7 @@ const COLORS = [
 ];
 
 export default function DashboardPage() {
+  const { year } = useYear();
   const [activeTab, setActiveTab] = useState('general'); // 'general' | 'offerings'
 
   // 일반 회계 요약 상태
@@ -58,14 +61,18 @@ export default function DashboardPage() {
   const [accountsList, setAccountsList] = useState([]);
   const [departmentsList] = useState(['전체', '봉사회', '어머니회', '은장회', '청년회', '미지정']);
 
-  // 초기 로드: 일반 회계 요약 및 필터용 계정과목 로드
+  // 1. 일반 요약 로드 (선택된 연도에 따라 재로드)
   useEffect(() => {
-    // 1. 일반 요약 로드
-    apiFetch('/dashboard/summary')
-      .then(setSummary)
-      .catch((err) => setSummaryError(err.message));
+    if (year) {
+      setSummary(null);
+      apiFetch(`/dashboard/summary?year=${year}`)
+        .then(setSummary)
+        .catch((err) => setSummaryError(err.message));
+    }
+  }, [year]);
 
-    // 2. 계정과목 목록 로드
+  // 2. 계정과목 목록 로드 (초기 1회)
+  useEffect(() => {
     apiFetch('/accounts')
       .then((data) => {
         // 수입/헌금 성격의 과목 필터링 (code 1로 시작하거나 name에 헌금/회비가 포함된 것)
@@ -75,12 +82,15 @@ export default function DashboardPage() {
         setAccountsList(incomeAccs);
       })
       .catch((err) => console.error('계정과목 로드 실패:', err));
-
-    // 3. 기본 조회 기간 당해년도로 셋업 (예: 2026-01 ~ 2026-12)
-    const thisYear = new Date().getFullYear();
-    setStartYm(`${thisYear}-01`);
-    setEndYm(`${thisYear}-12`);
   }, []);
+
+  // 3. 연도 변경 시 필터 연월 자동 설정
+  useEffect(() => {
+    if (year) {
+      setStartYm(`${year}-01`);
+      setEndYm(`${year}-12`);
+    }
+  }, [year]);
 
   // 헌금 통계 조회 함수
   const fetchOfferingsData = () => {
@@ -108,12 +118,12 @@ export default function DashboardPage() {
       });
   };
 
-  // 탭이 'offerings'로 최초 전환될 때 자동 조회
+  // 탭이 'offerings'이고 조회 기간 설정되었을 때, 혹은 기간이 바뀔 때 자동 조회
   useEffect(() => {
     if (activeTab === 'offerings' && startYm && endYm) {
       fetchOfferingsData();
     }
-  }, [activeTab]);
+  }, [activeTab, startYm, endYm]);
 
   // 엑셀 다운로드 핸들러
   const handleExcelDownload = () => {
@@ -559,7 +569,7 @@ export default function DashboardPage() {
                           <tr key={row.account_id}>
                             <td>{row.account_name}</td>
                             <td style={{ textAlign: 'right' }}>{money(row.total_amount)}원</td>
-                            <td style={{ textAlign: 'right' }}>{row.total_count}건</td>
+                            <td style={{ textAlign: 'right' }}>{money(row.total_count)}건</td>
                             <td style={{ textAlign: 'right' }}>{row.percentage.toFixed(1)}%</td>
                           </tr>
                         ))}
@@ -587,7 +597,7 @@ export default function DashboardPage() {
                           <tr key={row.department_name}>
                             <td>{row.department_name}</td>
                             <td style={{ textAlign: 'right' }}>{money(row.total_amount)}원</td>
-                            <td style={{ textAlign: 'right' }}>{row.total_count}건</td>
+                            <td style={{ textAlign: 'right' }}>{money(row.total_count)}건</td>
                             <td style={{ textAlign: 'right' }}>{row.percentage.toFixed(1)}%</td>
                           </tr>
                         ))}

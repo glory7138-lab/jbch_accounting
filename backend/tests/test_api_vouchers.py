@@ -85,3 +85,36 @@ def test_update_ledger_entry_success(client, db_session):
     db_session.refresh(voucher)
     assert voucher.description == "수정된 십일조 내역"
     assert voucher.amount == 200000.0
+
+
+def test_ledger_accounts_filtering(client, db_session):
+    acc1 = Account(code="11000", name="십일조", is_active=True)
+    acc2 = Account(code="11300", name="건축헌금", is_active=True)
+    db_session.add_all([acc1, acc2])
+    db_session.commit()
+
+    response = client.get("/api/ledger/accounts?category=일반계정")
+    assert response.status_code == 200
+    data = response.json()
+    codes = [a["code"] for a in data]
+    assert "11000" in codes
+    assert "11300" not in codes
+
+
+def test_create_ledger_entry_invalid_code_fails(client, db_session):
+    acc = Account(code="11300", name="건축헌금", is_active=True)
+    db_session.add(acc)
+    db_session.commit()
+    db_session.refresh(acc)
+
+    payload = {
+        "voucher_date": "2026-05-22",
+        "entry_type": "income",
+        "description": "잘못된 등록",
+        "amount": 10000,
+        "category_name": "일반계정",
+        "account_id": acc.id
+    }
+    response = client.post("/api/ledger/entries", json=payload)
+    assert response.status_code == 400
+    assert "사용할 수 없습니다" in response.json()["detail"]

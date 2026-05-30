@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { apiFetch } from '../lib/api';
+import { apiFetch, formatMoney } from '../lib/api';
+import { useYear } from '../lib/YearContext';
 
 const OFFERING_FIELDS = [
   { code: '11000', label: '십일조' },
@@ -36,19 +37,41 @@ function createEmptyRow(index, voucherDate) {
   };
 }
 
+function formatCustomWeekly(value) {
+  if (value === null || value === undefined || value === '') return '';
+  const num = Number(value);
+  if (isNaN(num)) return '';
+  
+  // 원화 환산 (부동소수점 오차 방지를 위해 round 처리)
+  const won = Math.round(num * 1000);
+  const absWon = Math.abs(won);
+  const isNegative = won < 0;
+  
+  let absWonStr = String(absWon).padStart(4, '0');
+  const dotPos = absWonStr.length - 3;
+  const integerPart = absWonStr.slice(0, dotPos);
+  const fractionalPart = absWonStr.slice(dotPos);
+  
+  let formattedInt = '';
+  let count = 0;
+  for (let i = integerPart.length - 1; i >= 0; i--) {
+    if (count > 0 && count % 3 === 0) {
+      formattedInt = ',' + formattedInt;
+    }
+    formattedInt = integerPart[i] + formattedInt;
+    count++;
+  }
+  
+  return (isNegative ? '-' : '') + formattedInt + '.' + fractionalPart;
+}
+
 function money(value) {
-  return new Intl.NumberFormat('ko-KR').format(Number(value || 0));
+  return formatCustomWeekly(value);
 }
 
 function formatWithCommas(val) {
   if (val === undefined || val === null || val === '') return '';
-  let clean = String(val).replace(/,/g, '');
-  if (clean.includes('.')) {
-    clean = clean.split('.')[0];
-  }
-  clean = clean.replace(/[^0-9]/g, '');
-  if (!clean) return '';
-  return new Intl.NumberFormat('ko-KR').format(Number(clean));
+  return formatCustomWeekly(val);
 }
 
 function memberDistrict(member) {
@@ -75,7 +98,12 @@ function normalizeLoadedRows(rows, voucherDate) {
     is_transfer: Boolean(row.is_transfer),
     note: row.note || '',
     offerings: Object.fromEntries(
-      OFFERING_FIELDS.map((field) => [field.code, row.offerings?.[field.code] ? String(row.offerings[field.code]) : '']),
+      OFFERING_FIELDS.map((field) => {
+        const rawWon = row.offerings?.[field.code];
+        // 디비의 원화 정수 금액을 1000으로 나누어 천원 단위 문자열로 변환
+        const thousandVal = rawWon ? String(Number(rawWon) / 1000) : '';
+        return [field.code, thousandVal];
+      }),
     ),
   }));
 
@@ -95,17 +123,328 @@ function hasRowContent(row) {
   );
 }
 
+function CustomDatePicker({ value, onChange, existingDates }) {
+  const [show, setShow] = useState(false);
+  
+  const parsed = useMemo(() => {
+    const parts = value ? value.split('-') : [];
+    if (parts.length === 3) {
+      const y = parseInt(parts[0], 10);
+      const m = parseInt(parts[1], 10);
+      const d = parseInt(parts[2], 10);
+      return { year: y, month: m - 1, day: d };
+    }
+    const d = new Date(value);
+    if (isNaN(d.getTime())) {
+      const now = new Date();
+      return { year: now.getFullYear(), month: now.getMonth(), day: now.getDate() };
+    }
+    return { year: d.getFullYear(), month: d.getMonth(), day: d.getDate() };
+  }, [value]);
+
+  const [currentYear, setCurrentYear] = useState(parsed.year);
+  const [currentMonth, setCurrentMonth] = useState(parsed.month);
+
+  useEffect(() => {
+    if (value) {
+      const parts = value.split('-');
+      if (parts.length === 3) {
+        const y = parseInt(parts[0], 10);
+        const m = parseInt(parts[1], 10);
+        if (!isNaN(y) && !isNaN(m)) {
+          setCurrentYear(y);
+          setCurrentMonth(m - 1);
+        }
+      } else {
+        const d = new Date(value);
+        if (!isNaN(d.getTime())) {
+          setCurrentYear(d.getFullYear());
+          setCurrentMonth(d.getMonth());
+        }
+      }
+    }
+  }, [value]);
+
+  const handlePrevMonth = () => {
+    if (currentMonth === 0) {
+      setCurrentYear(currentYear - 1);
+      setCurrentMonth(11);
+    } else {
+      setCurrentMonth(currentMonth - 1);
+    }
+  };
+
+  const handleNextMonth = () => {
+    if (currentMonth === 11) {
+      setCurrentYear(currentYear + 1);
+      setCurrentMonth(0);
+    } else {
+      setCurrentMonth(currentMonth + 1);
+    }
+  };
+
+  const firstDayIndex = new Date(currentYear, currentMonth, 1).getDay();
+  const totalDays = new Date(currentYear, currentMonth + 1, 0).getDate();
+
+  const daysArray = [];
+  for (let i = 0; i < firstDayIndex; i++) {
+    daysArray.push(null);
+  }
+  for (let i = 1; i <= totalDays; i++) {
+    daysArray.push(i);
+  }
+
+  const weekdays = ['일', '월', '화', '수', '목', '금', '토'];
+
+  return (
+    <div style={{ position: 'relative', display: 'inline-block' }}>
+      <style>{`
+        .custom-calendar-popover {
+          animation: calendarFadeIn 0.18s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+        @keyframes calendarFadeIn {
+          from { opacity: 0; transform: translateY(8px) scale(0.96); }
+          to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+      `}</style>
+      <div 
+        onClick={() => setShow(!show)}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '12px',
+          padding: '10px 16px',
+          borderRadius: '10px',
+          border: '1px solid var(--border, #cbd5e1)',
+          background: 'white',
+          cursor: 'pointer',
+          minWidth: '180px',
+          justifyContent: 'space-between',
+          userSelect: 'none',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+          transition: 'all 0.2s ease',
+          fontSize: '14px',
+          fontWeight: '600',
+          color: '#1e293b'
+        }}
+        onMouseOver={(e) => {
+          e.currentTarget.style.borderColor = '#94a3b8';
+          e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0,0,0,0.05)';
+        }}
+        onMouseOut={(e) => {
+          e.currentTarget.style.borderColor = 'var(--border, #cbd5e1)';
+          e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.05)';
+        }}
+      >
+        <span>{value}</span>
+        <span style={{ fontSize: '16px', color: '#64748b' }}>📅</span>
+      </div>
+
+      {show && (
+        <>
+          <div 
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              zIndex: 999,
+              background: 'transparent'
+            }}
+            onClick={() => setShow(false)}
+          />
+          
+          <div 
+            className="custom-calendar-popover"
+            style={{
+              position: 'absolute',
+              top: 'calc(100% + 8px)',
+              left: 0,
+              zIndex: 1000,
+              width: '300px',
+              padding: '20px',
+              borderRadius: '16px',
+              background: 'white',
+              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+              border: '1px solid #f1f5f9',
+              color: '#1e293b',
+              transformOrigin: 'top left'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <button 
+                type="button" 
+                onClick={handlePrevMonth}
+                style={{
+                  background: '#f8fafc',
+                  border: '1px solid #e2e8f0',
+                  fontSize: '14px',
+                  cursor: 'pointer',
+                  padding: '6px 10px',
+                  borderRadius: '8px',
+                  color: '#64748b',
+                  transition: 'background 0.2s',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+                onMouseOver={(e) => e.target.style.background = '#edf2f7'}
+                onMouseOut={(e) => e.target.style.background = '#f8fafc'}
+              >
+                ◀
+              </button>
+              <span style={{ fontWeight: '800', fontSize: '15px', color: '#0f172a' }}>
+                {currentYear}년 {currentMonth + 1}월
+              </span>
+              <button 
+                type="button" 
+                onClick={handleNextMonth}
+                style={{
+                  background: '#f8fafc',
+                  border: '1px solid #e2e8f0',
+                  fontSize: '14px',
+                  cursor: 'pointer',
+                  padding: '6px 10px',
+                  borderRadius: '8px',
+                  color: '#64748b',
+                  transition: 'background 0.2s',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+                onMouseOver={(e) => e.target.style.background = '#edf2f7'}
+                onMouseOut={(e) => e.target.style.background = '#f8fafc'}
+              >
+                ▶
+              </button>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '6px', textAlign: 'center', marginBottom: '10px' }}>
+              {weekdays.map((w, idx) => (
+                <span 
+                  key={w} 
+                  style={{ 
+                    fontSize: '12px', 
+                    fontWeight: '700', 
+                    color: idx === 0 ? '#ef4444' : idx === 6 ? '#2563eb' : '#64748b',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.05em'
+                  }}
+                >
+                  {w}
+                </span>
+              ))}
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '6px' }}>
+              {daysArray.map((day, index) => {
+                if (day === null) {
+                  return <div key={`empty-${index}`} />;
+                }
+
+                const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                const hasData = existingDates.includes(dateStr);
+                const isSelected = value === dateStr;
+
+                return (
+                  <button
+                    key={day}
+                    type="button"
+                    onClick={() => {
+                      onChange(dateStr);
+                      setShow(false);
+                    }}
+                    style={{
+                      position: 'relative',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      height: '34px',
+                      width: '34px',
+                      borderRadius: '50%',
+                      border: 'none',
+                      background: isSelected ? 'var(--primary, #2563eb)' : 'transparent',
+                      color: isSelected ? 'white' : '#334155',
+                      fontSize: '13px',
+                      fontWeight: isSelected ? '700' : '500',
+                      cursor: 'pointer',
+                      margin: '0 auto',
+                      outline: 'none',
+                      transition: 'all 0.15s ease',
+                      boxShadow: isSelected ? '0 4px 6px -1px rgba(37, 99, 235, 0.3)' : 'none'
+                    }}
+                    onMouseOver={(e) => {
+                      if (!isSelected) e.currentTarget.style.background = '#f1f5f9';
+                    }}
+                    onMouseOut={(e) => {
+                      if (!isSelected) e.currentTarget.style.background = 'transparent';
+                    }}
+                  >
+                    <span>{day}</span>
+                    {hasData && (
+                      <span 
+                        style={{ 
+                          position: 'absolute', 
+                          bottom: '3px', 
+                          width: '4px', 
+                          height: '4px', 
+                          borderRadius: '50%', 
+                          background: isSelected ? 'white' : '#2563eb',
+                          boxShadow: isSelected ? 'none' : '0 0 2px rgba(37, 99, 235, 0.5)'
+                        }} 
+                      />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function WeeklyOfferingForm({ voucherDate }) {
   const router = useRouter();
+  const { year } = useYear();
   const [rows, setRows] = useState(() => normalizeLoadedRows([], voucherDate));
   const [activeRowId, setActiveRowId] = useState(null);
+  const [activeCell, setActiveCell] = useState(null); // { rowId, code }
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (year && voucherDate) {
+      const urlYear = voucherDate.split('-')[0];
+      if (urlYear !== year) {
+        const dateParts = voucherDate.split('-');
+        dateParts[0] = year;
+        const nextDate = dateParts.join('-');
+        router.push(`/offerings/weekly/${nextDate}`);
+      }
+    }
+  }, [year, voucherDate, router]);
   const [saving, setSaving] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
   const [lookupStates, setLookupStates] = useState({});
   const lookupTimersRef = useRef({});
   const activeRowRef = useRef(null);
   const dirtyRef = useRef(false);
+  const [weeklyOfferingDates, setWeeklyOfferingDates] = useState([]);
+
+  async function loadWeeklyOfferingDates() {
+    try {
+      const dates = await apiFetch('/vouchers/weekly-offering-dates');
+      setWeeklyOfferingDates(dates || []);
+    } catch (error) {
+      console.error('Failed to load weekly dates:', error);
+    }
+  }
+
+  useEffect(() => {
+    loadWeeklyOfferingDates();
+  }, []);
 
   const totalAmount = useMemo(
     () => rows.reduce((sum, row) => sum + OFFERING_FIELDS.reduce((acc, field) => acc + Number(row.offerings[field.code] || 0), 0), 0),
@@ -132,13 +471,18 @@ export default function WeeklyOfferingForm({ voucherDate }) {
   }
 
   function updateOffering(rowId, code, value) {
-    const rawValue = value.replace(/[^0-9]/g, '');
+    // 숫자와 소수점만 허용
+    let clean = value.replace(/[^0-9.]/g, '');
+    const parts = clean.split('.');
+    if (parts.length > 2) {
+      clean = parts[0] + '.' + parts.slice(1).join('');
+    }
     setRows((current) =>
       current.map((row) =>
         row.rowId === rowId
           ? {
               ...row,
-              offerings: { ...row.offerings, [code]: rawValue },
+              offerings: { ...row.offerings, [code]: clean },
             }
           : row,
       ),
@@ -239,7 +583,7 @@ export default function WeeklyOfferingForm({ voucherDate }) {
       offerings: Object.fromEntries(
         Object.entries(row.offerings)
           .filter(([, value]) => Number(value || 0) > 0)
-          .map(([code, value]) => [code, Number(value)]),
+          .map(([code, value]) => [code, Math.round(Number(value) * 1000)]),
       ),
     }));
   }
@@ -271,6 +615,7 @@ export default function WeeklyOfferingForm({ voucherDate }) {
       if (!silent) {
         setStatusMessage(`저장 완료, 총 ${money(result.total_amount)}원`);
       }
+      loadWeeklyOfferingDates(); // Refresh calendar dots
       return true;
     } catch (error) {
       setStatusMessage(`저장 실패: ${error.message}`);
@@ -347,10 +692,16 @@ export default function WeeklyOfferingForm({ voucherDate }) {
         <div className="voucher-form__badge">행 이동 자동저장</div>
       </div>
 
-      <div className="weekly-toolbar weekly-toolbar--compact">
-        <label>
+      <div className="weekly-toolbar weekly-toolbar--compact" style={{ overflow: 'visible' }}>
+        <label style={{ overflow: 'visible' }}>
           기준 날짜
-          <input type="date" value={voucherDate} onChange={(e) => handleDateChange(e.target.value)} />
+          <div style={{ marginTop: '4px' }}>
+            <CustomDatePicker 
+              value={voucherDate} 
+              onChange={handleDateChange} 
+              existingDates={weeklyOfferingDates} 
+            />
+          </div>
         </label>
         <div className="helper-card weekly-toolbar__status">
           <strong>상태</strong>
@@ -383,7 +734,7 @@ export default function WeeklyOfferingForm({ voucherDate }) {
               <th>이체</th>
               <th>헌금 항목</th>
               <th>비고</th>
-              <th>합계</th>
+              <th className="text-right">합계</th>
             </tr>
           </thead>
           <tbody>
@@ -432,19 +783,29 @@ export default function WeeklyOfferingForm({ voucherDate }) {
                   </td>
                   <td className="offerings-cell">
                     <div className="offering-grid">
-                      {OFFERING_FIELDS.map((field) => (
-                        <label key={field.code} className="offering-input">
-                          <span>{field.label}</span>
-                          <input
-                            type="text"
-                            inputMode="numeric"
-                            value={formatWithCommas(row.offerings[field.code])}
-                            onFocus={() => handleRowFocus(row.rowId)}
-                            onChange={(e) => updateOffering(row.rowId, field.code, e.target.value)}
-                            placeholder="0"
-                          />
-                        </label>
-                      ))}
+                      {OFFERING_FIELDS.map((field) => {
+                        const isEditing = activeCell && activeCell.rowId === row.rowId && activeCell.code === field.code;
+                        const displayValue = isEditing ? row.offerings[field.code] : formatWithCommas(row.offerings[field.code]);
+                        return (
+                          <label key={field.code} className="offering-input">
+                            <span>{field.label}</span>
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              value={displayValue}
+                              onFocus={() => {
+                                handleRowFocus(row.rowId);
+                                setActiveCell({ rowId: row.rowId, code: field.code });
+                              }}
+                              onBlur={() => {
+                                setActiveCell(null);
+                              }}
+                              onChange={(e) => updateOffering(row.rowId, field.code, e.target.value)}
+                              placeholder="0"
+                            />
+                          </label>
+                        );
+                      })}
                     </div>
                   </td>
                   <td>
@@ -454,7 +815,7 @@ export default function WeeklyOfferingForm({ voucherDate }) {
                       onChange={(e) => updateRow(row.rowId, { note: e.target.value })}
                     />
                   </td>
-                  <td><strong>{money(rowTotal)}</strong></td>
+                  <td className="text-right"><strong>{money(rowTotal)}</strong></td>
                 </tr>
               );
             })}
@@ -462,14 +823,26 @@ export default function WeeklyOfferingForm({ voucherDate }) {
         </table>
       </div>
 
-      <div className="weekly-footer-bar helper-card">
-        <div className="weekly-footer-bar__totals">
-          <div><strong>총 합계</strong><br />{money(totalAmount)}원</div>
-          <div><strong>현금 합계</strong><br />{money(cashTotal)}원</div>
-        </div>
+      <div className="weekly-footer-bar">
         <div className="actions">
-          <button type="submit" disabled={saving}>{saving ? '저장 중...' : '저장'}</button>
-          <button type="button" className="secondary" onClick={() => addRows(10)}>행 10개 추가</button>
+          <button type="button" className="secondary" onClick={() => addRows(10)}>
+            + 10개 행 추가
+          </button>
+          <button type="submit" disabled={saving}>
+            {saving ? '저장 중...' : '전체 저장'}
+          </button>
+        </div>
+        <div className="weekly-footer-bar__totals helper-card">
+          <div>
+            <strong>현금 합계</strong>
+            <br />
+            {money(cashTotal)}원
+          </div>
+          <div>
+            <strong>총 합계</strong>
+            <br />
+            {money(totalAmount)}원
+          </div>
         </div>
       </div>
     </form>

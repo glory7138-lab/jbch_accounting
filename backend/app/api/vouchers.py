@@ -336,6 +336,18 @@ def _sync_weekly_sheet(db: Session, payload: WeeklyOfferingBatchCreate) -> Weekl
     )
 
 
+@router.get("/weekly-offering-dates", response_model=list[str])
+def get_weekly_offering_dates(year: int | None = Query(default=None), db: Session = Depends(get_db)):
+    query = select(Voucher.voucher_date).where(
+        Voucher.source_workbook == WEEKLY_SOURCE_WORKBOOK,
+        Voucher.source_sheet == WEEKLY_SOURCE_SHEET,
+    )
+    dates = db.scalars(query.distinct()).all()
+    if year:
+        dates = [d for d in dates if d.year == year]
+    return sorted([d.isoformat() for d in dates])
+
+
 @router.get("/weekly-offering", response_model=WeeklyOfferingSheetResponse)
 def get_weekly_offering_sheet(voucherDate: date = Query(...), db: Session = Depends(get_db)):
     return _load_weekly_sheet(db, voucherDate)
@@ -412,8 +424,32 @@ def create_weekly_offering_bulk(payload: WeeklyOfferingBatchCreate, db: Session 
 
 
 @router.get("", response_model=list[VoucherRead])
-def list_vouchers(limit: int = Query(default=200, le=1000), db: Session = Depends(get_db)):
-    return db.scalars(_voucher_statement().limit(limit)).unique().all()
+def list_vouchers(
+    year: int | None = Query(default=None, ge=2000, le=2100),
+    month: int | None = Query(default=None, ge=1, le=12),
+    limit: int | None = Query(default=None, le=5000),
+    db: Session = Depends(get_db)
+):
+    statement = _voucher_statement()
+    if year is not None:
+        from calendar import monthrange
+        if month is not None:
+            start_date = date(year, month, 1)
+            end_date = date(year, month, monthrange(year, month)[1])
+        else:
+            start_date = date(year, 1, 1)
+            end_date = date(year, 12, 31)
+        statement = statement.where(
+            Voucher.voucher_date >= start_date,
+            Voucher.voucher_date <= end_date
+        )
+        if limit is not None:
+            statement = statement.limit(limit)
+    else:
+        effective_limit = limit if limit is not None else 200
+        statement = statement.limit(effective_limit)
+        
+    return db.scalars(statement).unique().all()
 
 
 @router.get("/{voucher_id}", response_model=VoucherRead)
